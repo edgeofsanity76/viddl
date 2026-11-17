@@ -54,7 +54,12 @@ public sealed partial class MainWindow : Window
         DownloadsSplitter.TargetRow = DownloadsRow;
         AppWindow.Closing += OnClosing;
         Closed += (_, _) => OnClosed();
-        Root.Loaded += async (_, _) => await InitBrowserAsync();
+        Root.Loaded += async (_, _) =>
+        {
+            var browser = InitBrowserAsync();
+            await PromptForMissingToolsAsync();
+            await browser;
+        };
     }
 
     public Services Services { get; }

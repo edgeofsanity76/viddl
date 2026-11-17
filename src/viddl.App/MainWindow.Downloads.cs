@@ -421,22 +421,50 @@ public sealed partial class MainWindow
 
     private void RefreshToolStatus()
     {
-        var missing = new List<string>();
-        if (Services.Tools.FindFfmpeg() == null) missing.Add("ffmpeg");
-        if (Services.Tools.FindYtDlp() == null) missing.Add("yt-dlp");
-        ToolsWarning.Text = missing.Count == 0 ? "" : $"Missing: {string.Join(", ", missing)} - Settings → Install";
+        var missing = MissingTools();
+        ToolsWarning.Text = missing.Count == 0 ? "" : $"Missing: {string.Join(", ", missing)} - click to install";
         ToolsWarning.Visibility = missing.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (missing.Contains("ffmpeg")) Log("ffmpeg isn't installed yet: open Settings → Install / update ffmpeg & yt-dlp (needed to save MP4 files).");
     }
 
-    private async Task InstallToolsAsync()
+    private static readonly (string Name, string Line)[] ToolInfo =
+    {
+        ("ffmpeg", "ffmpeg (github.com/BtbN/FFmpeg-Builds, about 130 MB) - needed to save MP4 files"),
+        ("yt-dlp", "yt-dlp (github.com/yt-dlp/yt-dlp, about 18 MB) - extracts videos from web pages"),
+    };
+
+    private List<string> MissingTools()
+    {
+        var missing = new List<string>();
+        if (Services.Tools.FindFfmpeg() == null) missing.Add("ffmpeg");
+        if (Services.Tools.FindYtDlp() == null) missing.Add("yt-dlp");
+        return missing;
+    }
+
+    /// <summary>Offers to download ffmpeg / yt-dlp when either is missing (first start, or deleted since).</summary>
+    private async Task PromptForMissingToolsAsync()
+    {
+        if (MissingTools().Count == 0) return;
+        try { await InstallToolsAsync(onlyMissing: true); }
+        catch (Exception ex) { Log("Couldn't show the tools prompt: " + ex.Message); }
+    }
+
+    private async void ToolsWarning_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) =>
+        await PromptForMissingToolsAsync();
+
+    private async Task InstallToolsAsync(bool onlyMissing = false)
     {
         if (Services.Queue.IsRunning || _toolBusy) return;
-        if (!await Dialogs.ConfirmAsync(Root.XamlRoot, "Install tools",
-                "viddl will download two free helper programs into its data folder:\n\n" +
-                "• ffmpeg (github.com/BtbN/FFmpeg-Builds, about 130 MB) - needed to save MP4 files\n" +
-                "• yt-dlp (github.com/yt-dlp/yt-dlp, about 18 MB) - extracts videos from web pages",
-                "Install", "Cancel")) return;
+        var missing = MissingTools();
+        var wanted = onlyMissing ? missing : ToolInfo.Select(t => t.Name).ToList();
+        if (wanted.Count == 0) return;
+        var lines = string.Join("\n", ToolInfo.Where(t => wanted.Contains(t.Name)).Select(t => "• " + t.Line));
+        var message = onlyMissing
+            ? $"viddl needs {string.Join(" and ", wanted)} to download and save videos, and {(wanted.Count == 1 ? "it isn't" : "they aren't")} installed yet. " +
+              $"Download {(wanted.Count == 1 ? "it" : "them")} now into viddl's data folder?\n\n{lines}\n\nYou can do this later from Settings → Install / update ffmpeg & yt-dlp."
+            : $"viddl will download these free helper programs into its data folder:\n\n{lines}";
+        if (!await Dialogs.ConfirmAsync(Root.XamlRoot, onlyMissing ? "Download required tools?" : "Install tools",
+                message, onlyMissing ? "Download" : "Install", onlyMissing ? "Not now" : "Cancel")) return;
 
         _toolBusy = true;
         _toolCts = new CancellationTokenSource();
@@ -445,10 +473,16 @@ public sealed partial class MainWindow
         var progress = new Progress<DownloadProgress>(p => { if (active) SetStatus(p.Percent, p.Status); });
         try
         {
-            Log("Installing yt-dlp...");
-            await Services.Installer.InstallYtDlpAsync(progress, _toolCts.Token);
-            Log("Installing ffmpeg...");
-            await Services.Installer.InstallFfmpegAsync(progress, _toolCts.Token);
+            if (wanted.Contains("yt-dlp"))
+            {
+                Log("Installing yt-dlp...");
+                await Services.Installer.InstallYtDlpAsync(progress, _toolCts.Token);
+            }
+            if (wanted.Contains("ffmpeg"))
+            {
+                Log("Installing ffmpeg...");
+                await Services.Installer.InstallFfmpegAsync(progress, _toolCts.Token);
+            }
             active = false; // ignore progress messages still on their way to the UI thread
             SetStatus(100, "Tools installed.");
             Log($"Tools installed to {Services.Installer.ToolsDir}");

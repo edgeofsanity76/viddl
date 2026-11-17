@@ -340,7 +340,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="StatusText" Text="Ready." TextTrimming="CharacterEllipsis" Opacity="0.85" />
-                <TextBlock x:Name="ToolsWarning" Grid.Column="1" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" />
+                <TextBlock x:Name="ToolsWarning" Grid.Column="1" Tapped="ToolsWarning_Tapped" ToolTipService.ToolTip="Download the missing tools" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" />
             </Grid>
 
             <TabView x:Name="Tabs" Grid.Row="3" IsAddTabButtonVisible="False" CanReorderTabs="False" CanDragTabs="False" TabWidthMode="SizeToContent">
