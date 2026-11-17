@@ -1,0 +1,127 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Pushes to main create a tag and a release; everything else only builds and tests.
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  # Superseded pull-request builds are cancelled; builds of main always finish so every release is created.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Major.minor come from Directory.Build.props; the patch number is the workflow run number.
+      - name: Work out version
+        id: version
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $base = [version]($props.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+          $version = "$($base.Major).$($base.Minor).$env:GITHUB_RUN_NUMBER"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "Building version **$version**" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Build
+        run: dotnet build viddl.sln -c Release -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test with coverage
+        shell: pwsh
+        run: ./tests/coverage.ps1 -Configuration Release
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: tests/TestResults
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish ${{ matrix.platform }}
+    needs: build
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+          - platform: ARM64
+            rid: win-arm64
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # Self-contained: the .NET runtime and the Windows App SDK are included, so nothing needs installing.
+      - name: Publish
+        run: >
+          dotnet publish src/viddl.App/viddl.App.csproj -c Release
+          -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }} --self-contained true
+          -p:Version=${{ env.VERSION }} -o publish/${{ matrix.rid }}
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "viddl-${{ env.VERSION }}-${{ matrix.rid }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: viddl-${{ matrix.rid }}
+          path: viddl-${{ env.VERSION }}-${{ matrix.rid }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: [build, publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: viddl-*
+          merge-multiple: true
+
+      # Creates the tag v<version> on the built commit and a release with notes generated from the changes
+      # since the previous release. Re-running the same workflow run doesn't create a duplicate.
+      - name: Create tag and release
+        run: |
+          tag="v${VERSION}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $tag already exists - nothing to do."
+            exit 0
+          fi
+          gh release create "$tag" viddl-*.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "viddl ${VERSION}" \
+            --generate-notes
+          echo "Released [$tag](https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag)" >> "$GITHUB_STEP_SUMMARY"
