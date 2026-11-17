@@ -12,6 +12,7 @@ public sealed class AboutDialog : ContentDialog
 {
     public const string DiscordUser = "dustersevensix";
     private const string DiscordUrl = "https://discord.com/app";
+    private const string GitHubUrl = "https://github.com/edgeofsanity76/viddl";
 
     public AboutDialog(XamlRoot root, string dataFolder)
     {
@@ -35,9 +36,17 @@ public sealed class AboutDialog : ContentDialog
             "Save online videos as MP4. Play a video in the built-in browser, pick the stream viddl detects, " +
             "and it downloads and converts it without re-encoding."));
 
-        // Contact
-        panel.Children.Add(Heading("Contact"));
+        // Project and contact
+        panel.Children.Add(Heading("Project and contact"));
+        var github = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        github.Children.Add(BrandIcons.Create(BrandIcons.GitHubPath, 18));
+        var repo = new HyperlinkButton { Content = "github.com/edgeofsanity76/viddl", NavigateUri = new Uri(GitHubUrl), Padding = new Thickness(2, 3, 2, 3) };
+        ToolTipService.SetToolTip(repo, "Source code, releases and issues");
+        github.Children.Add(repo);
+        panel.Children.Add(github);
+
         var discord = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        discord.Children.Add(BrandIcons.Create(BrandIcons.DiscordPath, 18, BrandIcons.DiscordBlurple));
         discord.Children.Add(new TextBlock { Text = "Discord:", VerticalAlignment = VerticalAlignment.Center });
         discord.Children.Add(new TextBlock
         {

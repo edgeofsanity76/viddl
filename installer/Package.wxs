@@ -1,8 +1,8 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <!--
-    Per-user installation: no administrator rights needed, installs to %LocalAppData%\Programs\viddl and adds a
-    Start menu shortcut. Settings and downloads live in %LocalAppData%\viddl and are not touched by install,
+    Per-user installation: no administrator rights needed, installs to %LocalAppData%\Programs\viddl and adds
+    Start menu and desktop shortcuts. Settings and downloads live in %LocalAppData%\viddl and are not touched by install,
     upgrade or uninstall, so a first install starts with default settings.
   -->
   <Package Name="viddl"
@@ -40,10 +40,24 @@
       </Component>
     </StandardDirectory>
 
+    <!-- The user's desktop (per-user install). Removed again on uninstall. -->
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="3B1C6F0A-8E2D-4B7A-9C41-6D5E2F8A7B90">
+        <Shortcut Id="ViddlDesktopShortcut"
+                  Name="viddl"
+                  Description="Save online videos as MP4"
+                  Target="[INSTALLFOLDER]viddl.exe"
+                  Icon="viddl.ico"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\viddl" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
     <Feature Id="Main" Title="viddl">
       <!-- Everything the publish step produced: the app, the .NET runtime and the Windows App SDK. -->
       <Files Include="$(PublishDir)**" Directory="INSTALLFOLDER" />
       <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
     </Feature>
   </Package>
 </Wix>
