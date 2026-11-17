@@ -220,6 +220,7 @@ public sealed partial class MainWindow : Window
 
     private void OnClosed()
     {
+        DisposePreview();
         Services.Queue.Stop();
         _toolCts?.Cancel();
         SaveSettings();

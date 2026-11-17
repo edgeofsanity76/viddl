@@ -21,19 +21,19 @@ public sealed record ConversionPreset(string Id, string Name, string Extension, 
     /// <summary>All presets; the first is "no conversion".</summary>
     public static readonly IReadOnlyList<ConversionPreset> All = new[]
     {
-        new ConversionPreset(NoneId, "MP4 (no conversion)", ".mp4", "", Array.Empty<string>()),
-        new ConversionPreset("mp4-h264", "MP4 - H.264/AAC (plays everywhere)", ".mp4", " (H.264)",
+        new ConversionPreset(NoneId, "MP4", ".mp4", "", Array.Empty<string>()),
+        new ConversionPreset("mp4-h264", "MP4 - H.264/AAC", ".mp4", " (H.264)",
             H264.Concat(new[] { "-crf", "20" }).Concat(Aac).Concat(FastStart).ToArray()),
-        new ConversionPreset("mp4-720p", "MP4 - 720p (smaller)", ".mp4", " (720p)",
+        new ConversionPreset("mp4-720p", "MP4 - 720p", ".mp4", " (720p)",
             new[] { "-vf", "scale=-2:'min(720,ih)'" }.Concat(H264).Concat(new[] { "-crf", "23" }).Concat(Aac).Concat(FastStart).ToArray()),
-        new ConversionPreset("mp4-480p", "MP4 - 480p (small)", ".mp4", " (480p)",
+        new ConversionPreset("mp4-480p", "MP4 - 480p", ".mp4", " (480p)",
             new[] { "-vf", "scale=-2:'min(480,ih)'" }.Concat(H264).Concat(new[] { "-crf", "26" })
                 .Concat(new[] { "-c:a", "aac", "-b:a", "128k" }).Concat(FastStart).ToArray()),
-        new ConversionPreset("mkv", "MKV (no quality loss)", ".mkv", "", new[] { "-map", "0", "-c", "copy" }),
+        new ConversionPreset("mkv", "MKV", ".mkv", "", new[] { "-map", "0", "-c", "copy" }),
         new ConversionPreset("webm", "WebM - VP9/Opus", ".webm", "",
             new[] { "-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p", "-c:a", "libopus", "-b:a", "128k" }),
         new ConversionPreset("mp3", "MP3 - audio only", ".mp3", "", new[] { "-vn", "-c:a", "libmp3lame", "-q:a", "2" }),
-        new ConversionPreset("m4a", "M4A - audio only (AAC)", ".m4a", "", new[] { "-vn", "-c:a", "aac", "-b:a", "192k" }),
+        new ConversionPreset("m4a", "M4A - audio only", ".m4a", "", new[] { "-vn", "-c:a", "aac", "-b:a", "192k" }),
     };
 
     public bool IsNone => Id == NoneId;

@@ -130,14 +130,61 @@
                 <ColumnDefinition x:Name="StreamsColumn" Width="420" />
             </Grid.ColumnDefinitions>
 
-            <WebView2 x:Name="Web" />
-            <TextBlock x:Name="WebViewMissing"
-                       Visibility="Collapsed"
-                       TextWrapping="Wrap"
-                       TextAlignment="Center"
-                       VerticalAlignment="Center"
-                       Margin="40"
-                       Text="The built-in browser needs the Microsoft Edge WebView2 Runtime. Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and restart viddl. You can still paste a video link in the address bar and click Download URL." />
+            <!-- Browser and Preview share this area; switching only changes visibility, so the browser keeps its page. -->
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <SelectorBar x:Name="ViewTabs" Margin="4,0,0,0" SelectionChanged="ViewTabs_SelectionChanged">
+                    <SelectorBarItem x:Name="BrowserTabItem" Text="Browser" IsSelected="True">
+                        <SelectorBarItem.Icon>
+                            <FontIcon Glyph="&#xE774;" />
+                        </SelectorBarItem.Icon>
+                    </SelectorBarItem>
+                    <SelectorBarItem x:Name="PreviewTabItem" Text="Preview">
+                        <SelectorBarItem.Icon>
+                            <FontIcon Glyph="&#xE714;" />
+                        </SelectorBarItem.Icon>
+                    </SelectorBarItem>
+                </SelectorBar>
+
+                <WebView2 x:Name="Web" Grid.Row="1" />
+                <TextBlock x:Name="WebViewMissing"
+                           Grid.Row="1"
+                           Visibility="Collapsed"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           VerticalAlignment="Center"
+                           Margin="40"
+                           Text="The built-in browser needs the Microsoft Edge WebView2 Runtime. Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and restart viddl. You can still paste a video link in the address bar and click Download URL." />
+
+                <Grid x:Name="PreviewPane" Grid.Row="1" Visibility="Collapsed" Padding="8" RowSpacing="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="PreviewTitle" Text="Preview" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Button x:Name="StopPreviewButton" Grid.Column="1" Content="Stop preview" IsEnabled="False" Click="StopPreview_Click" />
+                    </Grid>
+                    <MediaPlayerElement x:Name="Player" Grid.Row="1" AreTransportControlsEnabled="True" Stretch="Uniform" />
+                    <TextBlock x:Name="PreviewMessage"
+                               Grid.Row="1"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center"
+                               Margin="40"
+                               Opacity="0.75"
+                               Text="Select a detected stream and click Preview, or right-click a download and choose Preview, to watch it here - even while it downloads." />
+                </Grid>
+            </Grid>
 
             <local:Splitter x:Name="StreamsSplitter" Grid.Column="1" Invert="True" Minimum="280" Maximum="900" />
 
@@ -196,6 +243,7 @@
                     <ListView.ContextFlyout>
                         <MenuFlyout>
                             <MenuFlyoutItem Text="Download" Click="DownloadSelected_Click" />
+                            <MenuFlyoutItem Text="Preview" Click="PreviewStream_Click" />
                             <MenuFlyoutItem Text="Copy URL" Click="CopyStreamUrl_Click" />
                             <MenuFlyoutItem Text="Remove from list" Click="RemoveStreams_Click" />
                         </MenuFlyout>
@@ -208,6 +256,12 @@
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE896;" FontSize="14" />
                             <TextBlock x:Name="DownloadSelectedText" Text="Download selected" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="PreviewStreamButton" IsEnabled="False" ToolTipService.ToolTip="Play the selected stream in the Preview tab" Click="PreviewStream_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE768;" FontSize="12" />
+                            <TextBlock Text="Preview" />
                         </StackPanel>
                     </Button>
                     <Button x:Name="CopyUrlButton" Content="Copy URL" IsEnabled="False" Click="CopyStreamUrl_Click" />
@@ -307,7 +361,8 @@
                         </ListView.ItemTemplate>
                         <ListView.ContextFlyout>
                             <MenuFlyout Opening="QueueMenu_Opening">
-                                <MenuFlyoutItem x:Name="PlayItem" Text="Play" Click="PlayItem_Click" />
+                                <MenuFlyoutItem x:Name="PreviewQueueMenuItem" Text="Preview" Click="PreviewQueueItem_Click" />
+                                <MenuFlyoutItem x:Name="PlayItem" Text="Play in default player" Click="PlayItem_Click" />
                                 <MenuFlyoutItem x:Name="ShowItem" Text="Show in folder" Click="ShowItem_Click" />
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutSubItem x:Name="ConvertItem" Text="Convert to" />

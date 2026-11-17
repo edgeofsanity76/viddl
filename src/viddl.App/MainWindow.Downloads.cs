@@ -116,6 +116,7 @@ public sealed partial class MainWindow
         DownloadSelectedButton.IsEnabled = sel.Any(s => !s.Unsupported);
         DownloadSelectedText.Text = sel.Count > 1 ? $"Download {sel.Count} selected" : "Download selected";
         CopyUrlButton.IsEnabled = sel.Count == 1;
+        PreviewStreamButton.IsEnabled = sel.Count == 1 && !sel[0].Unsupported;
         NameBox.IsEnabled = sel.Count == 1;
         _settingName = true;
         NameBox.Text = sel.Count == 1 ? sel[0].DisplayName : "";
@@ -286,6 +287,7 @@ public sealed partial class MainWindow
         ConvertItem.IsEnabled = files.Count > 0 && !_converting;
         PlayItem.IsEnabled = ShowItem.IsEnabled = sel.Any(i => i.OutputPath != null && File.Exists(i.OutputPath));
         RetryItem.IsEnabled = sel.Any(i => i.State is QueueItemState.Failed or QueueItemState.Cancelled);
+        PreviewQueueMenuItem.IsEnabled = sel.Count > 0;
         CopyQueueUrlItem.IsEnabled = sel.Count > 0;
         RemoveQueueItem.IsEnabled = sel.Any(i => i.State != QueueItemState.Running);
     }

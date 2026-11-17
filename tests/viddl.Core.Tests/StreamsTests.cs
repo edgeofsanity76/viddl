@@ -321,3 +321,41 @@ public class StreamFilterTests
         Assert.False(s.ShowUnknownQuality);
     }
 }
+
+public class PreviewRequestTests
+{
+    [Theory]
+    [InlineData("https://cdn.test/v/master.m3u8?t=1", PreviewKind.Adaptive)]
+    [InlineData("https://cdn.test/manifest.mpd", PreviewKind.Adaptive)]
+    [InlineData("https://cdn.test/clip.mp4", PreviewKind.Progressive)]
+    [InlineData("https://site.test/watch?v=1", PreviewKind.Unsupported)]
+    [InlineData("ftp://cdn.test/clip.mp4", PreviewKind.Unsupported)]
+    [InlineData("relative/clip.mp4", PreviewKind.Unsupported)]
+    [InlineData("", PreviewKind.Unsupported)]
+    [InlineData(@"C:\definitely\missing\clip.mp4", PreviewKind.Unsupported)]
+    public void KindOf(string source, PreviewKind expected) => Assert.Equal(expected, PreviewRequest.KindOf(source));
+
+    [Fact]
+    public void Local_files_that_exist_are_played_from_disk()
+    {
+        using var dir = new TempDir();
+        var file = dir.Write("clip.mp4", "x");
+        var r = new PreviewRequest(file, "Clip");
+        Assert.Equal(PreviewKind.LocalFile, r.Kind);
+        File.Delete(file);
+        Assert.Equal(PreviewKind.Unsupported, r.Kind);
+        Assert.Equal("The file no longer exists.", r.UnsupportedReason);
+    }
+
+    [Fact]
+    public void Requests_carry_site_headers_and_explain_web_pages()
+    {
+        var r = new PreviewRequest("https://site.test/watch", "Page", "https://site.test/", "UA", "c=1");
+        Assert.Equal(PreviewKind.Unsupported, r.Kind);
+        Assert.Contains("web page", r.UnsupportedReason);
+        Assert.Equal("https://site.test/", r.Referer);
+        Assert.Equal("UA", r.UserAgent);
+        Assert.Equal("c=1", r.Cookies);
+        Assert.Null(new PreviewRequest("x", "t").Referer);
+    }
+}
