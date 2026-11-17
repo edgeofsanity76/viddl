@@ -280,3 +280,44 @@ public class StreamQualityTests
         Assert.Equal(0, StreamCatalog.CompareQuality(S(StreamKind.Hls, seq: 1), S(StreamKind.Hls, seq: 1)));
     }
 }
+
+public class StreamFilterTests
+{
+    private static SniffedStream S(int? height) => new() { Uri = new Uri("https://x/" + height), Kind = StreamKind.Hls, PageUrl = "p", Height = height };
+
+    [Theory]
+    [InlineData(1080, 720, true, true)]
+    [InlineData(720, 720, true, true)]
+    [InlineData(480, 720, true, false)]
+    [InlineData(null, 720, true, true)]
+    [InlineData(null, 720, false, false)]
+    [InlineData(null, 0, false, true)]   // "All" shows everything, even unknown
+    [InlineData(240, 0, false, true)]
+    public void PassesFilter(int? height, int minHeight, bool includeUnknown, bool expected) =>
+        Assert.Equal(expected, StreamCatalog.PassesFilter(S(height), minHeight, includeUnknown));
+
+    [Fact]
+    public void Filtered_keeps_quality_order()
+    {
+        var catalog = new StreamCatalog();
+        var low = catalog.OnResponse("https://cdn/360p/a.m3u8", "", 200, "p", null)!;
+        var hd = catalog.OnResponse("https://cdn/1080p/b.m3u8", "", 200, "p", null)!;
+        var unknown = catalog.OnResponse("https://cdn/c.m3u8", "", 200, "p", null)!;
+
+        Assert.Equal(new[] { hd, unknown }, catalog.Filtered(720, true));
+        Assert.Equal(new[] { hd }, catalog.Filtered(720, false));
+        Assert.Equal(new[] { hd, low, unknown }, catalog.Filtered(0, false));
+    }
+
+    [Fact]
+    public void Filter_settings_default_to_showing_everything()
+    {
+        var s = new Viddl.Core.Settings.AppSettings();
+        Assert.Equal(0, s.MinStreamHeight);
+        Assert.True(s.ShowUnknownQuality);
+        s.MinStreamHeight = 720;
+        s.ShowUnknownQuality = false;
+        Assert.Equal(720, s.MinStreamHeight);
+        Assert.False(s.ShowUnknownQuality);
+    }
+}

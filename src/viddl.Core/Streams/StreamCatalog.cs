@@ -81,6 +81,17 @@ public sealed class StreamCatalog
         return b.Sequence.CompareTo(a.Sequence);
     }
 
+    /// <summary>
+    /// Whether a stream passes the quality filter: at least <paramref name="minHeight"/> pixels tall (0 = any), or of
+    /// unknown resolution when <paramref name="includeUnknown"/> is set.
+    /// </summary>
+    public static bool PassesFilter(SniffedStream s, int minHeight, bool includeUnknown) =>
+        minHeight <= 0 || (s.Height is int h ? h >= minHeight : includeUnknown);
+
+    /// <summary>The streams that pass the quality filter, best quality first.</summary>
+    public IReadOnlyList<SniffedStream> Filtered(int minHeight, bool includeUnknown) =>
+        _items.Where(s => PassesFilter(s, minHeight, includeUnknown)).ToList();
+
     private void Sort()
     {
         var before = _items.ToList();

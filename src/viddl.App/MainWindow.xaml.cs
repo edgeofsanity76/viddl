@@ -90,6 +90,9 @@ public sealed partial class MainWindow : Window
         foreach (var q in Qualities) QualityBox.Items.Add(q.Label);
         QualityBox.SelectedIndex = Math.Clamp(S.Quality, 0, Qualities.Length - 1);
         ParallelBox.Value = S.Parallel;
+        foreach (var preset in Viddl.Downloads.Engines.ConversionPreset.All) ConvertBox.Items.Add(preset.Name);
+        ConvertBox.SelectedIndex = Math.Max(0, Viddl.Downloads.Engines.ConversionPreset.All.ToList()
+            .IndexOf(Viddl.Downloads.Engines.ConversionPreset.Find(S.ConversionPreset)));
         ClearOnNavigate.IsChecked = S.ClearStreamsOnNavigate;
     }
 
@@ -104,6 +107,7 @@ public sealed partial class MainWindow : Window
         S.Folder = FolderBox.Text.Trim();
         S.Quality = QualityBox.SelectedIndex;
         S.Parallel = double.IsNaN(ParallelBox.Value) ? 4 : (int)ParallelBox.Value;
+        S.ConversionPreset = SelectedConversion.Id;
         S.ClearStreamsOnNavigate = ClearOnNavigate.IsChecked == true;
         S.StreamsPanelWidth = (int)StreamsColumn.ActualWidth;
         S.DownloadsPanelHeight = (int)DownloadsRow.ActualHeight;
@@ -148,6 +152,7 @@ public sealed partial class MainWindow : Window
         SettingsFlyout.Items.Add(new MenuFlyoutSeparator());
         SettingsFlyout.Items.Add(Toggle("Open folder when a download finishes", () => S.OpenFolderWhenDone, v => S.OpenFolderWhenDone = v));
         SettingsFlyout.Items.Add(Toggle("Sound when downloads finish", () => S.NotifyWhenDone, v => S.NotifyWhenDone = v));
+        SettingsFlyout.Items.Add(Toggle("Keep the original file after converting", () => S.KeepOriginalAfterConvert, v => S.KeepOriginalAfterConvert = v));
         SettingsFlyout.Items.Add(new MenuFlyoutSeparator());
         SettingsFlyout.Items.Add(Item("Install / update ffmpeg & yt-dlp…", async () => await InstallToolsAsync()));
         SettingsFlyout.Items.Add(new MenuFlyoutSeparator());
@@ -188,7 +193,7 @@ public sealed partial class MainWindow : Window
         Add(VirtualKey.L, VirtualKeyModifiers.Control, () => { Address.Focus(FocusState.Keyboard); _addressText?.SelectAll(); });
         Add(VirtualKey.D, VirtualKeyModifiers.Control, ToggleFavorite);
         Add(VirtualKey.F1, VirtualKeyModifiers.None, async () => await ShowAboutAsync());
-        Add(VirtualKey.Escape, VirtualKeyModifiers.None, () => { if (Services.Queue.IsRunning || _toolBusy) StopAll(); });
+        Add(VirtualKey.Escape, VirtualKeyModifiers.None, () => { if (Services.Queue.IsRunning || _toolBusy || _converting) StopAll(); });
     }
 
     private bool _aboutOpen;
@@ -283,6 +288,9 @@ public sealed partial class MainWindow : Window
         if (AddressInput.FirstUrl(text) is { } url) Navigate(url);
     }
 
+    private Viddl.Downloads.Engines.ConversionPreset SelectedConversion =>
+        Viddl.Downloads.Engines.ConversionPreset.All[Math.Max(0, ConvertBox.SelectedIndex)];
+
     private DownloadOptions? BuildOptions(string url, string? referer, string? name, string? userAgent, string? cookies, long? expectedBytes = null)
     {
         var folder = FolderBox.Text.Trim();
@@ -303,6 +311,8 @@ public sealed partial class MainWindow : Window
             Concurrency = double.IsNaN(ParallelBox.Value) ? 4 : (int)ParallelBox.Value,
             CookiesFromBrowser = S.CookieBrowser > 0 ? CookieBrowsers[S.CookieBrowser] : null,
             ExpectedBytes = expectedBytes,
+            ConversionPresetId = SelectedConversion.IsNone ? null : SelectedConversion.Id,
+            KeepOriginal = S.KeepOriginalAfterConvert,
         };
     }
 }

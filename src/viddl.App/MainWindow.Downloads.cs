@@ -22,52 +22,88 @@ public sealed partial class MainWindow
     // =====================================================================================
     // Detected streams
     // =====================================================================================
+    private static readonly (string Label, int MinHeight)[] QualityFilters =
+    {
+        ("All", 0), ("360p and up", 360), ("480p and up", 480), ("720p and up", 720),
+        ("1080p and up", 1080), ("1440p and up", 1440), ("2160p and up", 2160),
+    };
+
     private void WireStreams()
     {
+        foreach (var f in QualityFilters) MinQualityBox.Items.Add(f.Label);
+        var selected = Array.FindIndex(QualityFilters, f => f.MinHeight == S.MinStreamHeight);
+        MinQualityBox.SelectedIndex = selected < 0 ? 0 : selected;
+        ShowUnknownQuality.IsChecked = S.ShowUnknownQuality;
+        ShowUnknownQuality.IsEnabled = S.MinStreamHeight > 0;
+
         _catalog.Added += s =>
         {
-            var row = new StreamRow(s);
-            _rows[s] = row;
-            // The catalog keeps the list best quality first; put the row where it belongs.
-            StreamRows.Insert(Math.Min(_catalog.Items.ToList().IndexOf(s), StreamRows.Count), row);
-            if (StreamList.SelectedItems.Count == 0) StreamList.SelectedItem = row;
-            UpdateStreamsHeader();
+            _rows[s] = new StreamRow(s);
+            SyncStreamRows();
+            if (StreamList.SelectedItems.Count == 0 && StreamRows.FirstOrDefault(r => r.Stream == s) is { } row) StreamList.SelectedItem = row;
         };
-        _catalog.Reordered += SyncStreamOrder;
+        _catalog.Reordered += SyncStreamRows;
         _catalog.Removed += s =>
         {
-            if (_rows.Remove(s, out var row)) StreamRows.Remove(row);
-            UpdateStreamsHeader();
+            _rows.Remove(s);
+            SyncStreamRows();
         };
         _catalog.Changed += s =>
         {
             if (_rows.TryGetValue(s, out var row)) row.Refresh();
+            SyncStreamRows(); // a newly known resolution can move a stream into or out of the filter
             if (SelectedStreams().ToList() is [var only] && only == s) OnStreamSelectionChanged();
         };
         _catalog.Cleared += () =>
         {
             _rows.Clear();
-            StreamRows.Clear();
-            UpdateStreamsHeader();
+            SyncStreamRows();
         };
     }
 
-    /// <summary>Moves rows to match the catalog's order (moving keeps the selection, unlike rebuilding).</summary>
-    private void SyncStreamOrder()
+    /// <summary>
+    /// Makes the list show the streams that pass the quality filter, best quality first. Rows are moved, added and
+    /// removed in place (rather than rebuilt) so the selection is kept.
+    /// </summary>
+    private void SyncStreamRows()
     {
-        var order = _catalog.Items;
-        for (int i = 0; i < order.Count && i < StreamRows.Count; i++)
+        var visible = _catalog.Filtered(S.MinStreamHeight, S.ShowUnknownQuality)
+            .Where(_rows.ContainsKey).Select(s => _rows[s]).ToList();
+        for (int i = StreamRows.Count - 1; i >= 0; i--)
+            if (!visible.Contains(StreamRows[i])) StreamRows.RemoveAt(i);
+        for (int i = 0; i < visible.Count; i++)
         {
-            if (!_rows.TryGetValue(order[i], out var row)) continue;
-            int current = StreamRows.IndexOf(row);
-            if (current >= 0 && current != i) StreamRows.Move(current, i);
+            int current = StreamRows.IndexOf(visible[i]);
+            if (current < 0) StreamRows.Insert(i, visible[i]);
+            else if (current != i) StreamRows.Move(current, i);
         }
+        UpdateStreamsHeader();
     }
 
     private void UpdateStreamsHeader()
     {
-        StreamsHeader.Text = StreamRows.Count == 0 ? "Detected streams" : $"Detected streams ({StreamRows.Count})";
-        StreamsHint.Visibility = StreamRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        int total = _catalog.Items.Count, shown = StreamRows.Count;
+        StreamsHeader.Text = total == 0 ? "Detected streams"
+            : shown == total ? $"Detected streams ({total})"
+            : $"Detected streams ({shown} of {total})";
+        StreamsHint.Text = total > 0 && shown == 0
+            ? "All detected streams are below the quality filter. Choose a lower minimum to see them."
+            : "Play a video in the browser - its streams appear here, best quality first. Select one (or several) and click Download.";
+        StreamsHint.Visibility = shown == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void MinQualityBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MinQualityBox.SelectedIndex < 0) return;
+        S.MinStreamHeight = QualityFilters[MinQualityBox.SelectedIndex].MinHeight;
+        ShowUnknownQuality.IsEnabled = S.MinStreamHeight > 0;
+        SyncStreamRows();
+    }
+
+    private void ShowUnknownQuality_Click(object sender, RoutedEventArgs e)
+    {
+        S.ShowUnknownQuality = ShowUnknownQuality.IsChecked == true;
+        SyncStreamRows();
     }
 
     private IEnumerable<SniffedStream> SelectedStreams() => StreamList.SelectedItems.OfType<StreamRow>().Select(r => r.Stream);
@@ -204,7 +240,7 @@ public sealed partial class MainWindow
     private void UpdateQueueButtons()
     {
         var q = Services.Queue;
-        StopButton.IsEnabled = q.IsRunning || _toolBusy;
+        StopButton.IsEnabled = q.IsRunning || _toolBusy || _converting;
         StartQueueButton.IsEnabled = !q.IsRunning && !_toolBusy && q.WaitingCount > 0;
         ClearListButton.IsEnabled = q.Items.Any(i => i.State != QueueItemState.Running);
         DownloadsTab.Header = q.WaitingCount > 0 ? $"Downloads ({q.WaitingCount} waiting)" : "Downloads";
@@ -238,6 +274,16 @@ public sealed partial class MainWindow
     private void QueueMenu_Opening(object sender, object e)
     {
         var sel = SelectedQueueItems().ToList();
+        var files = sel.Where(i => i.State == QueueItemState.Done && i.OutputPath != null && File.Exists(i.OutputPath))
+            .Select(i => i.OutputPath!).ToList();
+        ConvertItem.Items.Clear();
+        foreach (var preset in Viddl.Downloads.Engines.ConversionPreset.All.Where(p => !p.IsNone))
+        {
+            var item = new MenuFlyoutItem { Text = preset.Name };
+            item.Click += async (_, _) => await ConvertFilesAsync(files, preset);
+            ConvertItem.Items.Add(item);
+        }
+        ConvertItem.IsEnabled = files.Count > 0 && !_converting;
         PlayItem.IsEnabled = ShowItem.IsEnabled = sel.Any(i => i.OutputPath != null && File.Exists(i.OutputPath));
         RetryItem.IsEnabled = sel.Any(i => i.State is QueueItemState.Failed or QueueItemState.Cancelled);
         CopyQueueUrlItem.IsEnabled = sel.Count > 0;
@@ -280,6 +326,54 @@ public sealed partial class MainWindow
     private void RemoveQueueItem_Click(object sender, RoutedEventArgs e) => Services.Queue.Remove(SelectedQueueItems().ToList());
 
     private void ClearFinished_Click(object sender, RoutedEventArgs e) => Services.Queue.ClearFinished();
+
+    // =====================================================================================
+    // Converting saved files
+    // =====================================================================================
+    private bool _converting;
+
+    /// <summary>Converts finished downloads one after another, showing progress in the status bar.</summary>
+    private async Task ConvertFilesAsync(IReadOnlyList<string> files, Viddl.Downloads.Engines.ConversionPreset preset)
+    {
+        if (_converting || files.Count == 0) return;
+        _converting = true;
+        _toolCts = new CancellationTokenSource();
+        StopButton.IsEnabled = true;
+        bool active = true;
+        var progress = new Progress<DownloadProgress>(p => { if (active) SetStatus(p.Percent, p.Status); });
+        var converter = new Viddl.Downloads.Engines.Converter(Services.Environment);
+        int done = 0;
+        try
+        {
+            foreach (var file in files)
+            {
+                Log($"Converting {Path.GetFileName(file)} to {preset.Name}...");
+                var output = await converter.ConvertAsync(file, preset, S.KeepOriginalAfterConvert, progress, _toolCts.Token);
+                Log($"Converted: {output}");
+                done++;
+            }
+            active = false;
+            SetStatus(100, done == 1 ? $"Converted to {preset.Name}." : $"Converted {done} files to {preset.Name}.");
+        }
+        catch (OperationCanceledException)
+        {
+            active = false;
+            SetStatus(0, "Conversion cancelled.");
+        }
+        catch (Exception ex)
+        {
+            active = false;
+            SetStatus(0, "Conversion failed: " + ex.Message.Split('\n')[0]);
+            Log("ERROR: " + ex.Message);
+        }
+        finally
+        {
+            _converting = false;
+            _toolCts.Dispose();
+            _toolCts = null;
+            UpdateQueueButtons();
+        }
+    }
 
     // =====================================================================================
     // Folder and tools

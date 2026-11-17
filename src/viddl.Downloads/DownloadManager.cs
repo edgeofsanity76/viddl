@@ -30,7 +30,22 @@ public sealed class DownloadManager : IDownloader
 
     public DownloadManager(DownloadEnvironment env) => _env = env;
 
+    /// <summary>Downloads the URL and, if a conversion is chosen, converts the saved file (download 0-80%, converting 80-100%).</summary>
     public async Task<string> DownloadAsync(DownloadOptions opt, DownloadEngine engine, IProgress<DownloadProgress> progress,
+        Action<string> log, CancellationToken ct)
+    {
+        var preset = ConversionPreset.Find(opt.ConversionPresetId);
+        if (preset.IsNone) return await DownloadCoreAsync(opt, engine, progress, log, ct).ConfigureAwait(false);
+
+        var saved = await DownloadCoreAsync(opt, engine, new ScaledProgress(progress, 0, 80), log, ct).ConfigureAwait(false);
+        log($"Converting {Path.GetFileName(saved)} to {preset.Name}...");
+        var converted = await new Converter(_env).ConvertAsync(saved, preset, opt.KeepOriginal, new ScaledProgress(progress, 80, 100), ct)
+            .ConfigureAwait(false);
+        log($"Converted: {converted}");
+        return converted;
+    }
+
+    private async Task<string> DownloadCoreAsync(DownloadOptions opt, DownloadEngine engine, IProgress<DownloadProgress> progress,
         Action<string> log, CancellationToken ct)
     {
         Directory.CreateDirectory(opt.OutputFolder);
@@ -89,6 +104,6 @@ public sealed class DownloadManager : IDownloader
         var best = scan.Streams[0];
         log($"Using: {best.Uri}");
         var sub = opt.WithUrl(best.Uri.ToString(), opt.FileName ?? scan.Title, opt.Referer ?? opt.Url);
-        return await DownloadAsync(sub, DownloadEngine.BuiltIn, progress, log, ct).ConfigureAwait(false);
+        return await DownloadCoreAsync(sub, DownloadEngine.BuiltIn, progress, log, ct).ConfigureAwait(false);
     }
 }
