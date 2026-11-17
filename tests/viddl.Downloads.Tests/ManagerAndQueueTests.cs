@@ -361,3 +361,28 @@ public class DownloadQueueTests
         Assert.Equal(new[] { "Status", "Percent", "OutputPath", "State" }, names);
     }
 }
+
+public class DownloadQueueEventTests
+{
+    private sealed class FailingDownloader : IDownloader
+    {
+        public Task<string> DownloadAsync(DownloadOptions opt, DownloadEngine engine, IProgress<DownloadProgress> progress, Action<string> log, CancellationToken ct) =>
+            throw new InvalidOperationException("fails");
+    }
+
+    [Fact]
+    public async Task Remove_and_retry_raise_state_changes()
+    {
+        var q = new DownloadQueue(new FailingDownloader());
+        var item = q.Enqueue(new DownloadOptions { Url = "https://a", OutputFolder = @"C:\out" }, DownloadEngine.Auto, "A")!;
+        await Task.Run(q.RunAsync);
+        int changes = 0;
+        q.StateChanged += () => changes++;
+
+        q.Retry(new[] { item });
+        Assert.Equal(1, changes);
+        q.Remove(new[] { item });
+        Assert.Equal(2, changes);
+        Assert.Empty(q.Items);
+    }
+}

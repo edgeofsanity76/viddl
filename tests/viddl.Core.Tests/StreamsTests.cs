@@ -201,3 +201,18 @@ public class StreamsTests
         Assert.Equal("HLS", (await HlsDescription.ProbeAsync(new Uri("https://cdn/bad.m3u8"), null, null, null, http.Factory)).Info);
     }
 }
+
+public class StreamCatalogEventTests
+{
+    [Fact]
+    public void Rename_notifies_listeners()
+    {
+        var catalog = new StreamCatalog();
+        var s = catalog.OnResponse("https://cdn/a.m3u8", "", 200, "https://page", null)!;
+        var changed = new List<SniffedStream>();
+        catalog.Changed += changed.Add;
+        catalog.Rename(s, "New name");
+        Assert.Equal(new[] { s }, changed);
+        Assert.Equal("New name", s.DisplayName);
+    }
+}
