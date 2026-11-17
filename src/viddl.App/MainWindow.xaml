@@ -95,7 +95,7 @@
             <Button x:Name="DownloadUrlButton" Grid.Column="8" Content="Download URL"
                     ToolTipService.ToolTip="Download the address-bar link directly (a video link, or a page yt-dlp supports)"
                     Click="DownloadUrlButton_Click" />
-            <DropDownButton x:Name="ShieldButton" Grid.Column="9" ToolTipService.ToolTip="Protection - click for options">
+            <DropDownButton x:Name="ShieldButton" AutomationProperties.Name="Protection" Grid.Column="9" ToolTipService.ToolTip="Protection - click for options">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon x:Name="ShieldIcon" Glyph="&#xE83D;" FontSize="14" />
                     <TextBlock x:Name="ShieldText" Text="Protection" />
@@ -182,7 +182,7 @@
                                VerticalAlignment="Center"
                                Margin="40"
                                Opacity="0.75"
-                               Text="Select a detected stream and click Preview, or right-click a download and choose Preview, to watch it here - even while it downloads." />
+                               Text="Double-click a download, or right-click a download or detected stream and choose Preview, to watch it here - even while it downloads." />
                 </Grid>
             </Grid>
 
@@ -321,7 +321,7 @@
                             <TextBlock Text="Clear list" />
                         </StackPanel>
                     </Button>
-                    <DropDownButton ToolTipService.ToolTip="Settings">
+                    <DropDownButton x:Name="SettingsButton" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE713;" FontSize="14" />
                             <TextBlock Text="Settings" />
