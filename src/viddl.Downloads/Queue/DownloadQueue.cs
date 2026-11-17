@@ -108,6 +108,14 @@ public sealed class DownloadQueue
 
     public void ClearFinished() => Remove(Items.Where(i => i.State == QueueItemState.Done).ToList());
 
+    /// <summary>Removes every item except the one downloading right now. Returns how many were removed.</summary>
+    public int Clear()
+    {
+        var removable = Items.Where(i => i.State != QueueItemState.Running).ToList();
+        Remove(removable);
+        return removable.Count;
+    }
+
     /// <summary>Puts failed or cancelled items back in the queue.</summary>
     public void Retry(IEnumerable<QueueItem> items)
     {

@@ -28,10 +28,12 @@ public sealed partial class MainWindow
         {
             var row = new StreamRow(s);
             _rows[s] = row;
-            StreamRows.Insert(0, row); // newest first - usually the video just played
+            // The catalog keeps the list best quality first; put the row where it belongs.
+            StreamRows.Insert(Math.Min(_catalog.Items.ToList().IndexOf(s), StreamRows.Count), row);
             if (StreamList.SelectedItems.Count == 0) StreamList.SelectedItem = row;
             UpdateStreamsHeader();
         };
+        _catalog.Reordered += SyncStreamOrder;
         _catalog.Removed += s =>
         {
             if (_rows.Remove(s, out var row)) StreamRows.Remove(row);
@@ -48,6 +50,18 @@ public sealed partial class MainWindow
             StreamRows.Clear();
             UpdateStreamsHeader();
         };
+    }
+
+    /// <summary>Moves rows to match the catalog's order (moving keeps the selection, unlike rebuilding).</summary>
+    private void SyncStreamOrder()
+    {
+        var order = _catalog.Items;
+        for (int i = 0; i < order.Count && i < StreamRows.Count; i++)
+        {
+            if (!_rows.TryGetValue(order[i], out var row)) continue;
+            int current = StreamRows.IndexOf(row);
+            if (current >= 0 && current != i) StreamRows.Move(current, i);
+        }
     }
 
     private void UpdateStreamsHeader()
@@ -143,18 +157,20 @@ public sealed partial class MainWindow
     private void WireQueue()
     {
         var q = Services.Queue;
-        // Mirror the queue's items as bindable rows.
+        // Mirror the queue's items as bindable rows, newest first. (The queue itself still runs oldest first.)
         q.Items.CollectionChanged += (_, _) =>
         {
             var current = QueueRows.ToDictionary(r => r.Item);
             QueueRows.Clear();
-            foreach (var item in q.Items) QueueRows.Add(current.TryGetValue(item, out var row) ? row : new QueueRow(item));
+            foreach (var item in q.Items.Reverse()) QueueRows.Add(current.TryGetValue(item, out var row) ? row : new QueueRow(item));
+            UpdateQueueButtons();
         };
         q.Log += Log;
         q.StateChanged += UpdateQueueButtons;
         q.Progress += (item, p) => SetStatus(p.Percent, $"{item.Name}: {p.Status}");
         q.ItemFinished += item =>
         {
+            UpdateQueueButtons();
             switch (item.State)
             {
                 case QueueItemState.Done:
@@ -190,7 +206,20 @@ public sealed partial class MainWindow
         var q = Services.Queue;
         StopButton.IsEnabled = q.IsRunning || _toolBusy;
         StartQueueButton.IsEnabled = !q.IsRunning && !_toolBusy && q.WaitingCount > 0;
+        ClearListButton.IsEnabled = q.Items.Any(i => i.State != QueueItemState.Running);
         DownloadsTab.Header = q.WaitingCount > 0 ? $"Downloads ({q.WaitingCount} waiting)" : "Downloads";
+    }
+
+    private async void ClearList_Click(object sender, RoutedEventArgs e)
+    {
+        var q = Services.Queue;
+        if (q.WaitingCount > 0 && !await Dialogs.ConfirmAsync(Root.XamlRoot, "Clear list",
+                $"{q.WaitingCount} download(s) haven't started yet and will be removed from the queue. Clear the list anyway?",
+                "Clear", "Cancel"))
+            return;
+        var removed = q.Clear();
+        SetStatus(0, removed == 0 ? "Nothing to clear." :
+            q.IsRunning ? $"Cleared {removed} item(s); the download in progress keeps going." : $"Cleared {removed} item(s).");
     }
 
     private void StartQueue_Click(object sender, RoutedEventArgs e) => _ = RunQueueAsync();

@@ -64,7 +64,7 @@ public class StreamsTests
     }
 
     [Fact]
-    public void Catalog_adds_streams_newest_first_and_ignores_duplicates()
+    public void Catalog_adds_streams_and_ignores_duplicates()
     {
         var now = new DateTime(2026, 1, 1);
         var catalog = new StreamCatalog(() => now);
@@ -80,7 +80,8 @@ public class StreamsTests
         Assert.Null(catalog.OnResponse("https://cdn/y.m3u8", "", 404, "p", null));
         Assert.Null(catalog.OnResponse("blob:https://cdn/1", "", 200, "p", null));
 
-        Assert.Equal(new[] { dash!, file!, hls! }, catalog.Items);
+        // No resolution known yet: adaptive streams (newest first) before plain files.
+        Assert.Equal(new[] { dash!, hls!, file! }, catalog.Items);
         Assert.Equal(3, added.Count);
         Assert.Equal(now, hls!.FoundAt);
         Assert.Equal("2.0 MB", file!.Info);
@@ -163,6 +164,7 @@ public class StreamsTests
             hi2.m3u8
             """));
         Assert.Equal("1080p · 360p", d.Info);
+        Assert.Equal(1080, d.MaxHeight);
         Assert.False(d.Unsupported);
         Assert.Contains("https://cdn/x/low.m3u8", d.ChildKeys);
         Assert.Contains("https://cdn/x/aud.m3u8", d.ChildKeys);
@@ -214,5 +216,67 @@ public class StreamCatalogEventTests
         catalog.Rename(s, "New name");
         Assert.Equal(new[] { s }, changed);
         Assert.Equal("New name", s.DisplayName);
+    }
+}
+
+public class StreamQualityTests
+{
+    [Theory]
+    [InlineData("https://cdn.test/hls/720p/index.m3u8", 720)]
+    [InlineData("https://cdn.test/video_1080P.mp4", 1080)]
+    [InlineData("https://cdn.test/v/1920x1080/clip.mp4", 1080)]
+    [InlineData("https://cdn.test/v/640x360_480p/x.m3u8", 480)]
+    [InlineData("https://cdn.test/movie-4k.mp4", 2160)]
+    [InlineData("https://cdn.test/uhd/master.m3u8", 2160)]
+    [InlineData("https://cdn.test/v/1080/index.m3u8", null)]       // a bare number isn't a resolution
+    [InlineData("https://cdn.test/v/9999p/x.mp4", null)]            // implausible height
+    [InlineData("https://cdn.test/abc720pxyz/x.mp4", null)]         // part of a longer word
+    [InlineData("https://cdn.test/x.mp4?q=1080p", null)]            // only the path counts
+    [InlineData("not a url 720p", 720)]
+    public void HeightFromUrl(string url, int? expected) => Assert.Equal(expected, StreamClassifier.HeightFromUrl(url));
+
+    [Fact]
+    public void Streams_are_sorted_best_quality_first()
+    {
+        var catalog = new StreamCatalog();
+        int reorders = 0;
+        catalog.Reordered += () => reorders++;
+
+        var small = catalog.OnResponse("https://cdn/ad.mp4", "video/mp4", 200, "p", null, null, "1000")!;
+        var big = catalog.OnResponse("https://cdn/movie.mp4", "video/mp4", 200, "p", null, null, "900000")!;
+        var hd = catalog.OnResponse("https://cdn/v/720p/index.m3u8", "", 200, "p", null)!;
+        var master = catalog.OnResponse("https://cdn/master.m3u8", "", 200, "p", null)!;
+        var drm = catalog.OnResponse("https://cdn/protected.m3u8", "", 200, "p", null)!;
+
+        Assert.Equal(720, hd.Height);
+        Assert.Equal("720p", hd.QualityLabel);
+        Assert.Equal("", master.QualityLabel);
+        Assert.Equal(new[] { hd, drm, master, big, small }, catalog.Items);
+
+        catalog.ApplyDescription(master, new HlsDescription("2160p · 1080p", false, Array.Empty<string>(), 2160));
+        catalog.ApplyDescription(drm, new HlsDescription("DRM protected - can't download", true, Array.Empty<string>()));
+
+        Assert.Equal(2160, master.Height);
+        Assert.Equal(new[] { master, hd, big, small, drm }, catalog.Items);
+        Assert.Equal(2, reorders);
+
+        // A lower probed height doesn't overwrite a better hint, and an unchanged order raises nothing.
+        catalog.ApplyDescription(hd, new HlsDescription("1:00", false, Array.Empty<string>(), 360));
+        Assert.Equal(720, hd.Height);
+        Assert.Equal(2, reorders);
+    }
+
+    [Fact]
+    public void Ties_are_broken_by_size_then_newest()
+    {
+        static SniffedStream S(StreamKind kind, int? height = null, long? size = null, bool unsupported = false, long seq = 0) =>
+            new() { Uri = new Uri("https://x/" + seq), Kind = kind, PageUrl = "p", Height = height, SizeBytes = size, Unsupported = unsupported, Sequence = seq };
+
+        Assert.True(StreamCatalog.CompareQuality(S(StreamKind.Direct, 1080), S(StreamKind.Hls, 720)) < 0);
+        Assert.True(StreamCatalog.CompareQuality(S(StreamKind.Hls, 720, unsupported: true), S(StreamKind.Direct)) > 0);
+        Assert.True(StreamCatalog.CompareQuality(S(StreamKind.Dash), S(StreamKind.Direct, size: 5)) < 0);
+        Assert.True(StreamCatalog.CompareQuality(S(StreamKind.Direct, size: 9), S(StreamKind.Direct, size: 5)) < 0);
+        Assert.True(StreamCatalog.CompareQuality(S(StreamKind.Hls, seq: 2), S(StreamKind.Hls, seq: 1)) < 0);
+        Assert.Equal(0, StreamCatalog.CompareQuality(S(StreamKind.Hls, seq: 1), S(StreamKind.Hls, seq: 1)));
     }
 }

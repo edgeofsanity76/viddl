@@ -156,7 +156,7 @@
                            Grid.Row="1"
                            TextWrapping="Wrap"
                            Opacity="0.7"
-                           Text="Play a video in the browser - its streams appear here. Select one (or several) and click Download." />
+                           Text="Play a video in the browser - its streams appear here, best quality first. Select one (or several) and click Download." />
 
                 <ListView x:Name="StreamList"
                           Grid.Row="2"
@@ -172,6 +172,10 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
                                     <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="3" Padding="5,0">
                                         <TextBlock Text="{x:Bind Kind}" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                    </Border>
+                                    <Border BorderBrush="{ThemeResource AccentFillColorDefaultBrush}" BorderThickness="1" CornerRadius="3" Padding="5,0"
+                                            Visibility="{x:Bind QualityVisibility, Mode=OneWay}">
+                                        <TextBlock Text="{x:Bind Quality, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" />
                                     </Border>
                                     <TextBlock Text="{x:Bind Info, Mode=OneWay}" FontSize="12" Opacity="0.75" />
                                 </StackPanel>
@@ -244,6 +248,12 @@
                             <TextBlock Text="Stop" />
                         </StackPanel>
                     </Button>
+                    <Button x:Name="ClearListButton" IsEnabled="False" ToolTipService.ToolTip="Remove everything from the downloads list except the download in progress" Click="ClearList_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE74D;" FontSize="12" />
+                            <TextBlock Text="Clear list" />
+                        </StackPanel>
+                    </Button>
                     <TextBlock x:Name="ToolsWarning" VerticalAlignment="Center" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" />
                 </StackPanel>
             </ScrollViewer>
@@ -285,6 +295,7 @@
                                 <MenuFlyoutItem x:Name="RemoveQueueItem" Text="Remove" Click="RemoveQueueItem_Click" />
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="Clear finished" Click="ClearFinished_Click" />
+                                <MenuFlyoutItem Text="Clear list" Click="ClearList_Click" />
                             </MenuFlyout>
                         </ListView.ContextFlyout>
                     </ListView>

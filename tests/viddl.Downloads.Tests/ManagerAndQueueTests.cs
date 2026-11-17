@@ -386,3 +386,39 @@ public class DownloadQueueEventTests
         Assert.Empty(q.Items);
     }
 }
+
+public class DownloadQueueClearTests
+{
+    [Fact]
+    public async Task Clear_removes_everything_except_the_running_item()
+    {
+        var gate = new TaskCompletionSource<string>();
+        var q = new DownloadQueue(new GatedDownloader(gate.Task));
+        var running = q.Enqueue(new DownloadOptions { Url = "https://1", OutputFolder = "out" }, DownloadEngine.Auto, "1")!;
+        q.Enqueue(new DownloadOptions { Url = "https://2", OutputFolder = "out" }, DownloadEngine.Auto, "2");
+        q.Enqueue(new DownloadOptions { Url = "https://3", OutputFolder = "out" }, DownloadEngine.Auto, "3");
+        var run = Task.Run(q.RunAsync);
+        while (running.State != QueueItemState.Running) await Task.Delay(5);
+        int changes = 0;
+        q.StateChanged += () => changes++;
+
+        Assert.Equal(2, q.Clear());
+        Assert.Equal(new[] { running }, q.Items);
+        Assert.Equal(1, changes);
+
+        gate.SetResult("done.mp4");
+        await run;
+        Assert.Equal(1, q.Clear());
+        Assert.Empty(q.Items);
+        Assert.Equal(0, q.Clear());
+    }
+
+    private sealed class GatedDownloader : IDownloader
+    {
+        private readonly Task<string> _result;
+
+        public GatedDownloader(Task<string> result) => _result = result;
+
+        public Task<string> DownloadAsync(DownloadOptions opt, DownloadEngine engine, IProgress<DownloadProgress> progress, Action<string> log, CancellationToken ct) => _result;
+    }
+}
