@@ -5,22 +5,47 @@
 
 viddl is a Windows desktop app for saving online videos as MP4 files. It has a built-in browser that
 watches network traffic while a video plays, lists the streams it finds, and downloads the one you pick.
-Downloads are converted to MP4 without re-encoding.
+Downloads are saved as MP4 without re-encoding, or converted to another format if you prefer.
+
+![viddl with a detected stream and a finished download](docs/screenshots/main.png)
 
 ## Features
+
+### Finding videos
 
 - **Built-in browser** (Microsoft Edge WebView2) with back/forward/reload, an address bar that suggests
   favorites and recently visited sites, and a favorites menu.
 - **Stream detection** while a video plays: HLS (`.m3u8`), DASH (`.mpd`) and whole video files. HLS entries
   show the available qualities or the running time; per-quality playlists are grouped under their master
   playlist so each video appears once.
+- **Best quality first**: detected streams are sorted by resolution, with a filter to hide anything below a
+  chosen quality (720p, 1080p...) and an option to hide streams whose quality is unknown.
+- **Download URL**: paste a direct `.m3u8`, `.mpd` or `.mp4` link, or any page supported by yt-dlp.
+
+### Downloading
+
 - **Download engines**
   - HLS: picks a quality, downloads segments in parallel, decrypts standard AES-128, merges separate audio
     tracks and supports fragmented MP4. Live streams are recorded until stopped.
   - DASH: fetched and muxed by ffmpeg.
   - Whole files: saved directly (non-MP4 containers are remuxed).
   - Web pages: handed to yt-dlp, with a fallback that scans the page HTML.
-- **Download queue** with steady progress, speed and time remaining, retry, and stop/resume.
+- **Download queue** with steady progress, speed and time remaining, retry, and stop/resume. The newest
+  download is listed first, and **Clear list** removes finished entries.
+- **Quality choice**: best available, or a maximum such as 1080p or 720p.
+- **Parallel downloads**: 1 to 16 connections per video.
+- **Conversion**: keep the MP4 as downloaded, or convert it to MP4 (H.264/AAC, 720p or 480p), MKV,
+  WebM (VP9/Opus), MP3 or M4A. The original can be kept alongside the converted file.
+- **Preview**: double-click a download to watch it in the **Preview** tab, even while it's still downloading.
+  Detected streams can be previewed before downloading too.
+- **Video tags**: downloads are tagged with their title and the page they came from. Right-click a download
+  and choose **Edit tags…** to set its title, description, comment, date and genre. Tags are written without
+  re-encoding.
+- **Tools on demand**: on first start (or whenever they're missing) viddl offers to download ffmpeg and yt-dlp
+  for you.
+
+### Staying safe
+
 - **Browser protection**: blocks known malware, phishing and cryptomining domains, suppresses page dialogs and
   pop-ups, cancels downloads started by pages, denies permission prompts, and stops pages from launching other
   programs.
@@ -32,39 +57,55 @@ Downloads are converted to MP4 without re-encoding.
   for every site.
 - **Ad and tracker blocking** using a built-in list, optionally extended with a community hosts list.
 
+### And more
+
+- Light and dark themes that follow Windows.
+- Settings, favorites and history stay on your PC (see [Where viddl keeps its files](#where-viddl-keeps-its-files)).
+- Keyboard shortcuts for the common actions (see [Keyboard shortcuts](#keyboard-shortcuts)).
+- Installer and portable versions for 64-bit, 32-bit and ARM PCs.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/settings.png" alt="Settings menu" /></td>
+    <td><img src="docs/screenshots/protection.png" alt="Protection menu" /></td>
+  </tr>
+  <tr>
+    <td align="center">Settings</td>
+    <td align="center">Protection</td>
+  </tr>
+</table>
+
 DRM-protected streams (Widevine, PlayReady, FairPlay, SAMPLE-AES) are detected, shown greyed out and never
 downloaded. Only download videos you have the right to save.
 
-## Requirements
+## Download
 
-- Windows 10 version 1809 or later, or Windows 11
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- Visual Studio 2022 (17.8 or later) with the **.NET desktop development** workload and the
-  **Windows App SDK C# Templates** component, or the .NET CLI on its own
-- Microsoft Edge WebView2 Runtime (included with Windows 11 and current Windows 10 builds)
-- ffmpeg and yt-dlp (viddl can install both for you, see below)
+Get the latest version from the **[releases page](https://github.com/edgeofsanity76/viddl/releases/latest)**.
+Every release has an installer and a portable zip for each kind of PC:
 
-## Getting started
+| Your Windows | Installer | Portable |
+|---|---|---|
+| 64-bit (most PCs) | `viddl-<version>-win-x64.msi` | `viddl-<version>-win-x64.zip` |
+| 32-bit | `viddl-<version>-win-x86.msi` | `viddl-<version>-win-x86.zip` |
+| ARM (e.g. Snapdragon laptops) | `viddl-<version>-win-arm64.msi` | `viddl-<version>-win-arm64.zip` |
 
-### Visual Studio
+- **Installer:** installs for your user account only (no administrator rights needed) to
+  `%LocalAppData%\Programs\viddl` and adds viddl to the Start menu. Uninstall it from **Settings → Apps**.
+  Newer versions install over older ones.
+- **Portable:** unzip anywhere and run `viddl.exe`.
+- [All releases](https://github.com/edgeofsanity76/viddl/releases)
 
-1. Open `viddl.sln`.
-2. Set **viddl.App** as the startup project and choose the **x64**, **x86** or **ARM64** platform.
-3. Press **F5**.
+Both include everything viddl needs, so nothing else has to be installed. viddl runs on Windows 10 version 1809 or
+later and Windows 11, and uses the Microsoft Edge WebView2 Runtime that comes with them.
 
-### Command line
+If Windows shows **"Windows protected your PC"** when you start an unsigned build, click **More info → Run anyway**.
+See [Code signing](#code-signing) for how signed builds avoid this.
 
-```powershell
-dotnet build viddl.sln
-dotnet run --project src/viddl.App
-```
-
-### First run
-
-Open **Settings → Install / update ffmpeg & yt-dlp**. viddl downloads ffmpeg from
+**First run:** viddl offers to download the two helper programs it needs: ffmpeg from
 [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) and yt-dlp from
-[yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp) into its data folder. Copies already on your `PATH` are
-used as well.
+[yt-dlp/yt-dlp](https://github.com/yt-dlp/yt-dlp). They go into its data folder. If you skip this, click the
+**Missing** note in the status bar or use **Settings → Install / update ffmpeg & yt-dlp** later. Copies already
+on your `PATH` are used as well.
 
 ## Using viddl
 
@@ -72,8 +113,10 @@ used as well.
 2. Play the video. Its streams appear under **Detected streams**, newest first.
 3. Select one or more streams, adjust the file name if you like, and click **Download selected**
    (or double-click a stream, or press Enter).
-4. Follow progress under **Downloads**. Right-click an entry to play it, show it in its folder, retry it or
-   remove it.
+4. Follow progress under **Downloads**. Double-click an entry to preview it. Right-click it to play it, show it
+   in its folder, convert it, edit its tags, retry it or remove it.
+
+Choose **Quality** and **Convert to** in the bar above the downloads list before starting a download.
 
 To download a link directly (an `.m3u8`, `.mpd` or `.mp4` URL, or a page supported by yt-dlp), paste it in the
 address bar and click **Download URL**.
@@ -109,12 +152,15 @@ You can add your own domains, one per line, to `adblock-custom.txt` or `malware-
 
 | Location | Contents |
 |---|---|
-| `%AppData%\viddl\settings.json` | Settings, favorites, history, sites where strict mode was switched on, and exceptions |
+| `%LocalAppData%\viddl\settings.json` | Settings, favorites, history, sites where strict mode was switched on, and exceptions |
 | `%LocalAppData%\viddl\tools` | ffmpeg and yt-dlp |
 | `%LocalAppData%\viddl\WebView2` | The browser profile (cookies, cache, sign-ins) |
 | `%LocalAppData%\viddl\*.txt` | Downloaded and custom block lists |
+| `%LocalAppData%\Programs\viddl` | The app itself, when installed with the installer |
 
-Data from versions before 2.0 (stored under `StreamVideoDownloader`) is copied to these folders on first start.
+Everything is kept locally on this PC (nothing roams with your Windows account), and a new installation starts with
+default settings. Installing, upgrading or uninstalling never touches `%LocalAppData%\viddl`; delete that folder to
+reset viddl completely.
 
 ## Project structure
 
@@ -126,6 +172,8 @@ src/
   viddl.Downloads/    Download engines (HLS, DASH, files, yt-dlp), ffmpeg runner, page scanner,
                       tool installer and the download queue
   viddl.App/          WinUI 3 desktop app (unpackaged) built on the two libraries
+installer/            Per-user MSI installer (WiX)
+build/                package.ps1 (zip + MSI per platform), sign.ps1, gitea-release.ps1, make-icon.ps1
 tests/
   viddl.Core.Tests/       Unit tests for viddl.Core
   viddl.Downloads.Tests/  Unit tests for viddl.Downloads
@@ -136,6 +184,30 @@ The libraries have no UI dependencies. Network access, external programs, tool l
 download engines through `DownloadEnvironment`, so tests run against an in-memory HTTP server and scripted
 stand-ins for ffmpeg and yt-dlp, with no network access or real waiting.
 
+To build it yourself you need the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0); open
+`viddl.sln` in Visual Studio 2022 or later (set **viddl.App** as the startup project), or run
+`dotnet run --project src/viddl.App`. `build/package.ps1 -Platform x64 -Version 2.0.0` produces the zip and installer.
+
+## Code signing
+
+Windows shows "Windows protected your PC" (Microsoft Defender SmartScreen) for apps and installers that aren't
+code-signed, and unsigned apps are more likely to be flagged by antivirus scanners. The fix is to sign releases with
+a code-signing certificate from a trusted certificate authority:
+
+1. Get a certificate. [Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/) is the cheapest
+   option for individuals; certificates from authorities such as DigiCert or Sectigo also work. Signed files are
+   trusted immediately by antivirus, and SmartScreen stops warning once the certificate has built up reputation
+   (EV certificates skip that wait).
+2. Export it as a `.pfx` file and add two repository secrets (on GitHub and, if used, on Gitea):
+   - `SIGNING_CERT_BASE64` – the file, base64-encoded:
+     `[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx'))`
+   - `SIGNING_CERT_PASSWORD` – its password
+
+The workflows then sign `viddl.exe`, viddl's DLLs and each installer automatically (with a timestamp, so signatures
+stay valid after the certificate expires). Without the secrets, builds are simply left unsigned. If a scanner still
+flags a release, it can be submitted to Microsoft as a false positive at
+[microsoft.com/wdsi/filesubmission](https://www.microsoft.com/wdsi/filesubmission).
+
 ## Builds and releases
 
 [`.github/workflows/build.yml`](.github/workflows/build.yml) runs on every push and pull request to `main`
@@ -143,11 +215,12 @@ stand-ins for ffmpeg and yt-dlp, with no network access or real waiting.
 
 1. **Build and test** – builds the solution in Release, runs the unit tests and adds a coverage table to the run
    summary. Test results are kept as a `test-results` artifact.
-2. **Publish** – produces self-contained builds for `win-x64`, `win-x86` (32-bit Windows) and `win-arm64`
-   (the .NET runtime and the Windows App SDK are included, so nothing needs installing) and zips them as
-   `viddl-<version>-<platform>.zip`.
+2. **Package** – for `win-x64`, `win-x86` (32-bit Windows) and `win-arm64`, builds a self-contained app (the .NET
+   runtime and the Windows App SDK are included, so nothing needs installing) as both
+   `viddl-<version>-<platform>.msi` and `viddl-<version>-<platform>.zip`, signed when a certificate is configured
+   (see [Code signing](#code-signing)).
 3. **Release** – on pushes to `main` only, tags the commit `v<version>` and creates a GitHub release with the
-   three zips attached and notes generated from the changes since the previous release.
+   installers and zips attached and notes generated from the changes since the previous release.
 
 Versions are `major.minor.run`: the major and minor numbers come from `Directory.Build.props` and the last part is
 the workflow run number, so every build of `main` gets a new tag and release (for example `v2.0.57`). To start a

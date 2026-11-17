@@ -30,6 +30,15 @@ public sealed class DownloadOptions
     /// <summary>File size if already known (e.g. seen by the built-in browser); used when the server doesn't send one.</summary>
     public long? ExpectedBytes { get; init; }
 
+    /// <summary>Conversion to run once the video is saved (a conversion preset id). Null = keep the MP4 as it is.</summary>
+    public string? ConversionPresetId { get; init; }
+
+    /// <summary>Keep the downloaded file after converting it (false = keep only the converted file).</summary>
+    public bool KeepOriginal { get; init; } = true;
+
+    /// <summary>Metadata tags to write into the saved file (e.g. title, comment). Null or empty = none.</summary>
+    public IReadOnlyDictionary<string, string>? Tags { get; init; }
+
     /// <summary>Returns a copy pointing at a different URL (used when a page resolves to a stream).</summary>
     public DownloadOptions WithUrl(string url, string? fileName, string? referer) => new()
     {
@@ -43,5 +52,8 @@ public sealed class DownloadOptions
         Concurrency = Concurrency,
         CookiesFromBrowser = CookiesFromBrowser,
         ExpectedBytes = ExpectedBytes,
+        ConversionPresetId = ConversionPresetId,
+        KeepOriginal = KeepOriginal,
+        Tags = Tags,
     };
 }

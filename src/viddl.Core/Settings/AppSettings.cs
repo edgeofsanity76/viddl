@@ -62,6 +62,21 @@ public sealed class AppSettings
     public bool MainMaximized { get; set; }
     public string? LastUrl { get; set; }
     public bool ClearStreamsOnNavigate { get; set; } = true;
+
+    /// <summary>Detected streams below this height are hidden (0 = show all).</summary>
+    public int MinStreamHeight { get; set; }
+
+    /// <summary>Whether streams whose resolution isn't known pass the quality filter.</summary>
+    public bool ShowUnknownQuality { get; set; } = true;
+
+    /// <summary>Conversion preset applied to every download once it's saved ("none" = keep the MP4).</summary>
+    public string ConversionPreset { get; set; } = "none";
+
+    /// <summary>Keep the downloaded file after converting it.</summary>
+    public bool KeepOriginalAfterConvert { get; set; } = true;
+
+    /// <summary>Write the video's title and source page into each download's tags.</summary>
+    public bool TagDownloads { get; set; } = true;
     public int StreamsPanelWidth { get; set; } = 420;
     public int DownloadsPanelHeight { get; set; } = 260;
     public List<SiteEntry> Favorites { get; set; } = new();

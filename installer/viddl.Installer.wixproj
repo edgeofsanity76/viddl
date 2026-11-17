@@ -1,0 +1,23 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!--
+    Builds a per-user MSI from a published copy of the app. Normally run through build/build-installer.ps1:
+      dotnet build installer/viddl.Installer.wixproj -c Release -p:Platform=x64 -p:PublishDir=<publish folder>
+  -->
+  <PropertyGroup>
+    <OutputName>viddl</OutputName>
+    <Platform Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU'">x64</Platform>
+    <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildThisFileDirectory)..\publish\win-x64\</PublishDir>
+    <DefineConstants>PublishDir=$(PublishDir);ProductVersion=$(Version)</DefineConstants>
+    <!--
+      Validation checks that don't fit this package:
+      - ICE38/ICE64/ICE91: per-user installs keep files in the user profile, which the validators expect to be tracked
+        through registry keys. That doesn't apply to a self-contained app folder.
+      - ICE03: a few Windows App SDK DLLs carry unusual language codes in their version information; the language
+        column only matters for multi-language file replacement, which this single-language app doesn't use.
+      - ICE61: reinstalling the same version is allowed on purpose (AllowSameVersionUpgrades).
+    -->
+    <SuppressIces>ICE03;ICE38;ICE61;ICE64;ICE91</SuppressIces>
+  </PropertyGroup>
+
+</Project>

@@ -86,7 +86,7 @@ foreach ($file in $Files) {
     $stream = [System.IO.File]::OpenRead((Resolve-Path $file))
     try {
         $content = [System.Net.Http.StreamContent]::new($stream)
-        $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new('application/zip')
+        $content.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new($(if ($name -like "*.msi") { "application/x-msi" } else { "application/zip" }))
         $form.Add($content, 'attachment', $name)
         $request = [System.Net.Http.HttpRequestMessage]::new('POST', "$api/releases/$($release.id)/assets?name=$([uri]::EscapeDataString($name))")
         $request.Content = $form

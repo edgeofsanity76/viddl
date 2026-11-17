@@ -15,6 +15,9 @@ public sealed class StreamRow : INotifyPropertyChanged
 
     public string Name => Stream.DisplayName;
     public string Kind => Stream.KindLabel;
+    public string Quality => Stream.QualityLabel;
+    public Microsoft.UI.Xaml.Visibility QualityVisibility =>
+        Stream.Height == null ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
     public string Info => Stream.Info;
     public double RowOpacity => Stream.Unsupported ? 0.45 : 1;
     public string Tooltip => $"{Stream.DisplayName}\n{Stream.Uri}\nFound {Stream.FoundAt:HH:mm:ss} on {Stream.PageUrl}";

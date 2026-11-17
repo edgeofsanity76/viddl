@@ -63,25 +63,24 @@ jobs:
         shell: powershell
         run: ./tests/coverage.ps1 -Configuration Release
 
-      # Self-contained: the .NET runtime and the Windows App SDK are included, so nothing needs installing.
-      - name: Publish
+      # Self-contained app (the .NET runtime and the Windows App SDK are included) as a zip and a per-user MSI for
+      # each platform. Signed when the SIGNING_CERT_BASE64 / SIGNING_CERT_PASSWORD secrets are set (see build/sign.ps1).
+      - name: Package
         shell: powershell
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: |
-          $version = '${{ steps.version.outputs.version }}'
-          foreach ($target in @(@('x64', 'win-x64'), @('x86', 'win-x86'), @('ARM64', 'win-arm64'))) {
-            $platform, $rid = $target
-            dotnet publish src/viddl.App/viddl.App.csproj -c Release -p:Platform=$platform -r $rid `
-              --self-contained true -p:Version=$version -o "publish/$rid"
-            if ($LASTEXITCODE -ne 0) { throw "Publishing $rid failed" }
-            Compress-Archive -Path "publish/$rid/*" -DestinationPath "viddl-$version-$rid.zip" -Force
+          foreach ($platform in 'x64', 'x86', 'ARM64') {
+            ./build/package.ps1 -Platform $platform -Version '${{ steps.version.outputs.version }}' -OutputDir dist
           }
 
       # Gitea supports version 3 of the artifact actions.
-      - name: Keep the zips
+      - name: Keep the packages
         uses: https://github.com/actions/upload-artifact@v3
         with:
           name: viddl-${{ steps.version.outputs.version }}
-          path: viddl-*.zip
+          path: dist/*
 
       - name: Create release
         if: >-
@@ -94,4 +93,4 @@ jobs:
           $version = '${{ steps.version.outputs.version }}'
           ./build/gitea-release.ps1 -ServerUrl $env:GITHUB_SERVER_URL -Repository $env:GITHUB_REPOSITORY `
             -Token $env:RELEASE_TOKEN -Tag "v$version" -Commit $env:GITHUB_SHA `
-            -Files (Get-ChildItem "viddl-$version-*.zip" | ForEach-Object FullName)
+            -Files (Get-ChildItem "dist/viddl-$version-*" | ForEach-Object FullName)

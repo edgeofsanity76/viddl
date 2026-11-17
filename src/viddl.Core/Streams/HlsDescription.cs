@@ -8,7 +8,8 @@ namespace Viddl.Core.Streams;
 /// <param name="Info">"1080p · 720p", "12:34", "LIVE", "DRM protected - can't download"...</param>
 /// <param name="Unsupported">True for DRM-protected streams.</param>
 /// <param name="ChildKeys">For a master playlist: keys of its variant and audio playlists.</param>
-public sealed record HlsDescription(string Info, bool Unsupported, IReadOnlyList<string> ChildKeys)
+/// <param name="MaxHeight">For a master playlist: the highest resolution it offers, if known.</param>
+public sealed record HlsDescription(string Info, bool Unsupported, IReadOnlyList<string> ChildKeys, int? MaxHeight = null)
 {
     public static HlsDescription Describe(HlsPlaylist pl)
     {
@@ -19,7 +20,7 @@ public sealed record HlsDescription(string Info, bool Unsupported, IReadOnlyList
             var children = pl.Variants.Select(v => SniffedStream.KeyOf(v.Uri))
                 .Concat(pl.AudioRenditions.Where(a => a.Uri != null).Select(a => SniffedStream.KeyOf(a.Uri!)))
                 .ToList();
-            return new HlsDescription(info, false, children);
+            return new HlsDescription(info, false, children, heights.Count > 0 ? heights[0] : null);
         }
         if (pl.FindDrmKey() != null) return new HlsDescription("DRM protected - can't download", true, Array.Empty<string>());
         if (!pl.IsVod) return new HlsDescription("LIVE", false, Array.Empty<string>());

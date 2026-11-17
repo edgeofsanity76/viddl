@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Services = new Services();
         Title = "viddl";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "viddl.ico"));
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
 
         RestorePlacement();
@@ -53,7 +54,12 @@ public sealed partial class MainWindow : Window
         DownloadsSplitter.TargetRow = DownloadsRow;
         AppWindow.Closing += OnClosing;
         Closed += (_, _) => OnClosed();
-        Root.Loaded += async (_, _) => await InitBrowserAsync();
+        Root.Loaded += async (_, _) =>
+        {
+            var browser = InitBrowserAsync();
+            await PromptForMissingToolsAsync();
+            await browser;
+        };
     }
 
     public Services Services { get; }
@@ -88,7 +94,9 @@ public sealed partial class MainWindow : Window
         FolderBox.Text = string.IsNullOrWhiteSpace(S.Folder) ? DefaultFolder() : S.Folder;
         foreach (var q in Qualities) QualityBox.Items.Add(q.Label);
         QualityBox.SelectedIndex = Math.Clamp(S.Quality, 0, Qualities.Length - 1);
-        ParallelBox.Value = S.Parallel;
+        foreach (var preset in Viddl.Downloads.Engines.ConversionPreset.All) ConvertBox.Items.Add(preset.Name);
+        ConvertBox.SelectedIndex = Math.Max(0, Viddl.Downloads.Engines.ConversionPreset.All.ToList()
+            .IndexOf(Viddl.Downloads.Engines.ConversionPreset.Find(S.ConversionPreset)));
         ClearOnNavigate.IsChecked = S.ClearStreamsOnNavigate;
     }
 
@@ -102,7 +110,7 @@ public sealed partial class MainWindow : Window
     {
         S.Folder = FolderBox.Text.Trim();
         S.Quality = QualityBox.SelectedIndex;
-        S.Parallel = double.IsNaN(ParallelBox.Value) ? 4 : (int)ParallelBox.Value;
+        S.ConversionPreset = SelectedConversion.Id;
         S.ClearStreamsOnNavigate = ClearOnNavigate.IsChecked == true;
         S.StreamsPanelWidth = (int)StreamsColumn.ActualWidth;
         S.DownloadsPanelHeight = (int)DownloadsRow.ActualHeight;
@@ -137,7 +145,17 @@ public sealed partial class MainWindow : Window
             cookies.Items.Add(item);
         }
 
+        var parallel = new MenuFlyoutSubItem { Text = "Parallel downloads per video" };
+        foreach (var n in new[] { 1, 2, 4, 8, 16 })
+        {
+            var item = new RadioMenuFlyoutItem { Text = n == 4 ? "4 (default)" : n.ToString(), GroupName = "parallel", IsChecked = S.Parallel == n };
+            item.Click += (_, _) => S.Parallel = n;
+            parallel.Items.Add(item);
+        }
+        ToolTipService.SetToolTip(parallel, "Segments downloaded at the same time. Lower it (1-2) if a site starts refusing requests.");
+
         SettingsFlyout.Items.Add(engine);
+        SettingsFlyout.Items.Add(parallel);
         SettingsFlyout.Items.Add(cookies);
         SettingsFlyout.Items.Add(new MenuFlyoutSeparator());
         foreach (var item in ProtectionToggles()) SettingsFlyout.Items.Add(item);
@@ -147,6 +165,8 @@ public sealed partial class MainWindow : Window
         SettingsFlyout.Items.Add(new MenuFlyoutSeparator());
         SettingsFlyout.Items.Add(Toggle("Open folder when a download finishes", () => S.OpenFolderWhenDone, v => S.OpenFolderWhenDone = v));
         SettingsFlyout.Items.Add(Toggle("Sound when downloads finish", () => S.NotifyWhenDone, v => S.NotifyWhenDone = v));
+        SettingsFlyout.Items.Add(Toggle("Keep the original file after converting", () => S.KeepOriginalAfterConvert, v => S.KeepOriginalAfterConvert = v));
+        SettingsFlyout.Items.Add(Toggle("Tag downloads with their title and source page", () => S.TagDownloads, v => S.TagDownloads = v));
         SettingsFlyout.Items.Add(new MenuFlyoutSeparator());
         SettingsFlyout.Items.Add(Item("Install / update ffmpeg & yt-dlp…", async () => await InstallToolsAsync()));
         SettingsFlyout.Items.Add(new MenuFlyoutSeparator());
@@ -187,7 +207,7 @@ public sealed partial class MainWindow : Window
         Add(VirtualKey.L, VirtualKeyModifiers.Control, () => { Address.Focus(FocusState.Keyboard); _addressText?.SelectAll(); });
         Add(VirtualKey.D, VirtualKeyModifiers.Control, ToggleFavorite);
         Add(VirtualKey.F1, VirtualKeyModifiers.None, async () => await ShowAboutAsync());
-        Add(VirtualKey.Escape, VirtualKeyModifiers.None, () => { if (Services.Queue.IsRunning || _toolBusy) StopAll(); });
+        Add(VirtualKey.Escape, VirtualKeyModifiers.None, () => { if (Services.Queue.IsRunning || _toolBusy || _converting) StopAll(); });
     }
 
     private bool _aboutOpen;
@@ -214,6 +234,7 @@ public sealed partial class MainWindow : Window
 
     private void OnClosed()
     {
+        DisposePreview();
         Services.Queue.Stop();
         _toolCts?.Cancel();
         SaveSettings();
@@ -233,7 +254,7 @@ public sealed partial class MainWindow : Window
     private string WindowTitle()
     {
         var t = Web.CoreWebView2?.DocumentTitle;
-        return string.IsNullOrWhiteSpace(t) || t.StartsWith("data:") ? "viddl" : $"{t} - viddl";
+        return string.IsNullOrWhiteSpace(t) || t.StartsWith("data:") || t == "viddl" ? "viddl" : $"{t} - viddl";
     }
 
     private void Log(string line)
@@ -282,6 +303,17 @@ public sealed partial class MainWindow : Window
         if (AddressInput.FirstUrl(text) is { } url) Navigate(url);
     }
 
+    /// <summary>Tags written into every download when tagging is on: its title and the page it came from.</summary>
+    private static Dictionary<string, string> AutoTags(string? title, string source)
+    {
+        var tags = new Dictionary<string, string> { ["comment"] = "Source: " + source };
+        if (!string.IsNullOrWhiteSpace(title)) tags["title"] = title.Trim();
+        return tags;
+    }
+
+    private Viddl.Downloads.Engines.ConversionPreset SelectedConversion =>
+        Viddl.Downloads.Engines.ConversionPreset.All[Math.Max(0, ConvertBox.SelectedIndex)];
+
     private DownloadOptions? BuildOptions(string url, string? referer, string? name, string? userAgent, string? cookies, long? expectedBytes = null)
     {
         var folder = FolderBox.Text.Trim();
@@ -299,9 +331,12 @@ public sealed partial class MainWindow : Window
             UserAgent = userAgent,
             Cookies = cookies,
             MaxHeight = Qualities[Math.Max(0, QualityBox.SelectedIndex)].MaxHeight,
-            Concurrency = double.IsNaN(ParallelBox.Value) ? 4 : (int)ParallelBox.Value,
+            Concurrency = S.Parallel,
             CookiesFromBrowser = S.CookieBrowser > 0 ? CookieBrowsers[S.CookieBrowser] : null,
             ExpectedBytes = expectedBytes,
+            ConversionPresetId = SelectedConversion.IsNone ? null : SelectedConversion.Id,
+            KeepOriginal = S.KeepOriginalAfterConvert,
+            Tags = S.TagDownloads ? AutoTags(name, referer ?? url) : null,
         };
     }
 }

@@ -22,38 +22,88 @@ public sealed partial class MainWindow
     // =====================================================================================
     // Detected streams
     // =====================================================================================
+    private static readonly (string Label, int MinHeight)[] QualityFilters =
+    {
+        ("All", 0), ("360p and up", 360), ("480p and up", 480), ("720p and up", 720),
+        ("1080p and up", 1080), ("1440p and up", 1440), ("2160p and up", 2160),
+    };
+
     private void WireStreams()
     {
+        foreach (var f in QualityFilters) MinQualityBox.Items.Add(f.Label);
+        var selected = Array.FindIndex(QualityFilters, f => f.MinHeight == S.MinStreamHeight);
+        MinQualityBox.SelectedIndex = selected < 0 ? 0 : selected;
+        ShowUnknownQuality.IsChecked = S.ShowUnknownQuality;
+        ShowUnknownQuality.IsEnabled = S.MinStreamHeight > 0;
+
         _catalog.Added += s =>
         {
-            var row = new StreamRow(s);
-            _rows[s] = row;
-            StreamRows.Insert(0, row); // newest first - usually the video just played
-            if (StreamList.SelectedItems.Count == 0) StreamList.SelectedItem = row;
-            UpdateStreamsHeader();
+            _rows[s] = new StreamRow(s);
+            SyncStreamRows();
+            if (StreamList.SelectedItems.Count == 0 && StreamRows.FirstOrDefault(r => r.Stream == s) is { } row) StreamList.SelectedItem = row;
         };
+        _catalog.Reordered += SyncStreamRows;
         _catalog.Removed += s =>
         {
-            if (_rows.Remove(s, out var row)) StreamRows.Remove(row);
-            UpdateStreamsHeader();
+            _rows.Remove(s);
+            SyncStreamRows();
         };
         _catalog.Changed += s =>
         {
             if (_rows.TryGetValue(s, out var row)) row.Refresh();
+            SyncStreamRows(); // a newly known resolution can move a stream into or out of the filter
             if (SelectedStreams().ToList() is [var only] && only == s) OnStreamSelectionChanged();
         };
         _catalog.Cleared += () =>
         {
             _rows.Clear();
-            StreamRows.Clear();
-            UpdateStreamsHeader();
+            SyncStreamRows();
         };
+    }
+
+    /// <summary>
+    /// Makes the list show the streams that pass the quality filter, best quality first. Rows are moved, added and
+    /// removed in place (rather than rebuilt) so the selection is kept.
+    /// </summary>
+    private void SyncStreamRows()
+    {
+        var visible = _catalog.Filtered(S.MinStreamHeight, S.ShowUnknownQuality)
+            .Where(_rows.ContainsKey).Select(s => _rows[s]).ToList();
+        for (int i = StreamRows.Count - 1; i >= 0; i--)
+            if (!visible.Contains(StreamRows[i])) StreamRows.RemoveAt(i);
+        for (int i = 0; i < visible.Count; i++)
+        {
+            int current = StreamRows.IndexOf(visible[i]);
+            if (current < 0) StreamRows.Insert(i, visible[i]);
+            else if (current != i) StreamRows.Move(current, i);
+        }
+        UpdateStreamsHeader();
     }
 
     private void UpdateStreamsHeader()
     {
-        StreamsHeader.Text = StreamRows.Count == 0 ? "Detected streams" : $"Detected streams ({StreamRows.Count})";
-        StreamsHint.Visibility = StreamRows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        int total = _catalog.Items.Count, shown = StreamRows.Count;
+        StreamsHeader.Text = total == 0 ? "Detected streams"
+            : shown == total ? $"Detected streams ({total})"
+            : $"Detected streams ({shown} of {total})";
+        StreamsHint.Text = total > 0 && shown == 0
+            ? "All detected streams are below the quality filter. Choose a lower minimum to see them."
+            : "Play a video in the browser - its streams appear here, best quality first. Select one (or several) and click Download.";
+        StreamsHint.Visibility = shown == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void MinQualityBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MinQualityBox.SelectedIndex < 0) return;
+        S.MinStreamHeight = QualityFilters[MinQualityBox.SelectedIndex].MinHeight;
+        ShowUnknownQuality.IsEnabled = S.MinStreamHeight > 0;
+        SyncStreamRows();
+    }
+
+    private void ShowUnknownQuality_Click(object sender, RoutedEventArgs e)
+    {
+        S.ShowUnknownQuality = ShowUnknownQuality.IsChecked == true;
+        SyncStreamRows();
     }
 
     private IEnumerable<SniffedStream> SelectedStreams() => StreamList.SelectedItems.OfType<StreamRow>().Select(r => r.Stream);
@@ -65,7 +115,6 @@ public sealed partial class MainWindow
         var sel = SelectedStreams().ToList();
         DownloadSelectedButton.IsEnabled = sel.Any(s => !s.Unsupported);
         DownloadSelectedText.Text = sel.Count > 1 ? $"Download {sel.Count} selected" : "Download selected";
-        CopyUrlButton.IsEnabled = sel.Count == 1;
         NameBox.IsEnabled = sel.Count == 1;
         _settingName = true;
         NameBox.Text = sel.Count == 1 ? sel[0].DisplayName : "";
@@ -143,18 +192,20 @@ public sealed partial class MainWindow
     private void WireQueue()
     {
         var q = Services.Queue;
-        // Mirror the queue's items as bindable rows.
+        // Mirror the queue's items as bindable rows, newest first. (The queue itself still runs oldest first.)
         q.Items.CollectionChanged += (_, _) =>
         {
             var current = QueueRows.ToDictionary(r => r.Item);
             QueueRows.Clear();
-            foreach (var item in q.Items) QueueRows.Add(current.TryGetValue(item, out var row) ? row : new QueueRow(item));
+            foreach (var item in q.Items.Reverse()) QueueRows.Add(current.TryGetValue(item, out var row) ? row : new QueueRow(item));
+            UpdateQueueButtons();
         };
         q.Log += Log;
         q.StateChanged += UpdateQueueButtons;
         q.Progress += (item, p) => SetStatus(p.Percent, $"{item.Name}: {p.Status}");
         q.ItemFinished += item =>
         {
+            UpdateQueueButtons();
             switch (item.State)
             {
                 case QueueItemState.Done:
@@ -188,9 +239,23 @@ public sealed partial class MainWindow
     private void UpdateQueueButtons()
     {
         var q = Services.Queue;
-        StopButton.IsEnabled = q.IsRunning || _toolBusy;
+        StopButton.IsEnabled = q.IsRunning || _toolBusy || _converting;
         StartQueueButton.IsEnabled = !q.IsRunning && !_toolBusy && q.WaitingCount > 0;
+        ClearListButton.IsEnabled = q.Items.Any(i => i.State != QueueItemState.Running);
+        QueueEmptyHint.Visibility = q.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         DownloadsTab.Header = q.WaitingCount > 0 ? $"Downloads ({q.WaitingCount} waiting)" : "Downloads";
+    }
+
+    private async void ClearList_Click(object sender, RoutedEventArgs e)
+    {
+        var q = Services.Queue;
+        if (q.WaitingCount > 0 && !await Dialogs.ConfirmAsync(Root.XamlRoot, "Clear list",
+                $"{q.WaitingCount} download(s) haven't started yet and will be removed from the queue. Clear the list anyway?",
+                "Clear", "Cancel"))
+            return;
+        var removed = q.Clear();
+        SetStatus(0, removed == 0 ? "Nothing to clear." :
+            q.IsRunning ? $"Cleared {removed} item(s); the download in progress keeps going." : $"Cleared {removed} item(s).");
     }
 
     private void StartQueue_Click(object sender, RoutedEventArgs e) => _ = RunQueueAsync();
@@ -209,16 +274,26 @@ public sealed partial class MainWindow
     private void QueueMenu_Opening(object sender, object e)
     {
         var sel = SelectedQueueItems().ToList();
+        var files = sel.Where(i => i.State == QueueItemState.Done && i.OutputPath != null && File.Exists(i.OutputPath))
+            .Select(i => i.OutputPath!).ToList();
+        ConvertItem.Items.Clear();
+        foreach (var preset in Viddl.Downloads.Engines.ConversionPreset.All.Where(p => !p.IsNone))
+        {
+            var item = new MenuFlyoutItem { Text = preset.Name };
+            item.Click += async (_, _) => await ConvertFilesAsync(files, preset);
+            ConvertItem.Items.Add(item);
+        }
+        ConvertItem.IsEnabled = files.Count > 0 && !_converting;
+        EditTagsItem.IsEnabled = files.Count == 1 && sel.Count == 1;
         PlayItem.IsEnabled = ShowItem.IsEnabled = sel.Any(i => i.OutputPath != null && File.Exists(i.OutputPath));
         RetryItem.IsEnabled = sel.Any(i => i.State is QueueItemState.Failed or QueueItemState.Cancelled);
+        PreviewQueueMenuItem.IsEnabled = sel.Count > 0;
         CopyQueueUrlItem.IsEnabled = sel.Count > 0;
         RemoveQueueItem.IsEnabled = sel.Any(i => i.State != QueueItemState.Running);
     }
 
-    private void QueueList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        if (SelectedQueueItems().FirstOrDefault() is { OutputPath: { } p } && File.Exists(p)) OpenFile(p);
-    }
+    /// <summary>Double-clicking a download previews it: from its source while downloading, from disk once saved.</summary>
+    private void QueueList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) => PreviewQueueItem_Click(sender, e);
 
     private void QueueList_KeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -253,6 +328,78 @@ public sealed partial class MainWindow
     private void ClearFinished_Click(object sender, RoutedEventArgs e) => Services.Queue.ClearFinished();
 
     // =====================================================================================
+    // Tags
+    // =====================================================================================
+    private async void EditTags_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedQueueItems().FirstOrDefault() is not { OutputPath: { } path } || !File.Exists(path)) return;
+        var editor = new Viddl.Downloads.Engines.TagEditor(Services.Environment);
+        try
+        {
+            var current = await editor.ReadAsync(path);
+            var dialog = new TagsDialog(Root.XamlRoot, Path.GetFileName(path), current);
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            SetStatus(null, "Saving tags...");
+            await editor.WriteAsync(path, dialog.Tags);
+            SetStatus(0, $"Tags saved: {Path.GetFileName(path)}");
+            Log($"Tags saved: {path}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(0, "Couldn't save tags: " + ex.Message.Split((char)10)[0]);
+            Log("ERROR: " + ex.Message);
+        }
+    }
+
+    // =====================================================================================
+    // Converting saved files
+    // =====================================================================================
+    private bool _converting;
+
+    /// <summary>Converts finished downloads one after another, showing progress in the status bar.</summary>
+    private async Task ConvertFilesAsync(IReadOnlyList<string> files, Viddl.Downloads.Engines.ConversionPreset preset)
+    {
+        if (_converting || files.Count == 0) return;
+        _converting = true;
+        _toolCts = new CancellationTokenSource();
+        StopButton.IsEnabled = true;
+        bool active = true;
+        var progress = new Progress<DownloadProgress>(p => { if (active) SetStatus(p.Percent, p.Status); });
+        var converter = new Viddl.Downloads.Engines.Converter(Services.Environment);
+        int done = 0;
+        try
+        {
+            foreach (var file in files)
+            {
+                Log($"Converting {Path.GetFileName(file)} to {preset.Name}...");
+                var output = await converter.ConvertAsync(file, preset, S.KeepOriginalAfterConvert, progress, _toolCts.Token);
+                Log($"Converted: {output}");
+                done++;
+            }
+            active = false;
+            SetStatus(100, done == 1 ? $"Converted to {preset.Name}." : $"Converted {done} files to {preset.Name}.");
+        }
+        catch (OperationCanceledException)
+        {
+            active = false;
+            SetStatus(0, "Conversion cancelled.");
+        }
+        catch (Exception ex)
+        {
+            active = false;
+            SetStatus(0, "Conversion failed: " + ex.Message.Split('\n')[0]);
+            Log("ERROR: " + ex.Message);
+        }
+        finally
+        {
+            _converting = false;
+            _toolCts.Dispose();
+            _toolCts = null;
+            UpdateQueueButtons();
+        }
+    }
+
+    // =====================================================================================
     // Folder and tools
     // =====================================================================================
     private async void BrowseFolder_Click(object sender, RoutedEventArgs e)
@@ -274,22 +421,50 @@ public sealed partial class MainWindow
 
     private void RefreshToolStatus()
     {
-        var missing = new List<string>();
-        if (Services.Tools.FindFfmpeg() == null) missing.Add("ffmpeg");
-        if (Services.Tools.FindYtDlp() == null) missing.Add("yt-dlp");
-        ToolsWarning.Text = missing.Count == 0 ? "" : $"Missing: {string.Join(", ", missing)} - Settings → Install";
+        var missing = MissingTools();
+        ToolsWarning.Text = missing.Count == 0 ? "" : $"Missing: {string.Join(", ", missing)} - click to install";
         ToolsWarning.Visibility = missing.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (missing.Contains("ffmpeg")) Log("ffmpeg isn't installed yet: open Settings → Install / update ffmpeg & yt-dlp (needed to save MP4 files).");
     }
 
-    private async Task InstallToolsAsync()
+    private static readonly (string Name, string Line)[] ToolInfo =
+    {
+        ("ffmpeg", "ffmpeg (github.com/BtbN/FFmpeg-Builds, about 130 MB) - needed to save MP4 files"),
+        ("yt-dlp", "yt-dlp (github.com/yt-dlp/yt-dlp, about 18 MB) - extracts videos from web pages"),
+    };
+
+    private List<string> MissingTools()
+    {
+        var missing = new List<string>();
+        if (Services.Tools.FindFfmpeg() == null) missing.Add("ffmpeg");
+        if (Services.Tools.FindYtDlp() == null) missing.Add("yt-dlp");
+        return missing;
+    }
+
+    /// <summary>Offers to download ffmpeg / yt-dlp when either is missing (first start, or deleted since).</summary>
+    private async Task PromptForMissingToolsAsync()
+    {
+        if (MissingTools().Count == 0) return;
+        try { await InstallToolsAsync(onlyMissing: true); }
+        catch (Exception ex) { Log("Couldn't show the tools prompt: " + ex.Message); }
+    }
+
+    private async void ToolsWarning_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e) =>
+        await PromptForMissingToolsAsync();
+
+    private async Task InstallToolsAsync(bool onlyMissing = false)
     {
         if (Services.Queue.IsRunning || _toolBusy) return;
-        if (!await Dialogs.ConfirmAsync(Root.XamlRoot, "Install tools",
-                "viddl will download two free helper programs into its data folder:\n\n" +
-                "• ffmpeg (github.com/BtbN/FFmpeg-Builds, about 130 MB) - needed to save MP4 files\n" +
-                "• yt-dlp (github.com/yt-dlp/yt-dlp, about 18 MB) - extracts videos from web pages",
-                "Install", "Cancel")) return;
+        var missing = MissingTools();
+        var wanted = onlyMissing ? missing : ToolInfo.Select(t => t.Name).ToList();
+        if (wanted.Count == 0) return;
+        var lines = string.Join("\n", ToolInfo.Where(t => wanted.Contains(t.Name)).Select(t => "• " + t.Line));
+        var message = onlyMissing
+            ? $"viddl needs {string.Join(" and ", wanted)} to download and save videos, and {(wanted.Count == 1 ? "it isn't" : "they aren't")} installed yet. " +
+              $"Download {(wanted.Count == 1 ? "it" : "them")} now into viddl's data folder?\n\n{lines}\n\nYou can do this later from Settings → Install / update ffmpeg & yt-dlp."
+            : $"viddl will download these free helper programs into its data folder:\n\n{lines}";
+        if (!await Dialogs.ConfirmAsync(Root.XamlRoot, onlyMissing ? "Download required tools?" : "Install tools",
+                message, onlyMissing ? "Download" : "Install", onlyMissing ? "Not now" : "Cancel")) return;
 
         _toolBusy = true;
         _toolCts = new CancellationTokenSource();
@@ -298,10 +473,16 @@ public sealed partial class MainWindow
         var progress = new Progress<DownloadProgress>(p => { if (active) SetStatus(p.Percent, p.Status); });
         try
         {
-            Log("Installing yt-dlp...");
-            await Services.Installer.InstallYtDlpAsync(progress, _toolCts.Token);
-            Log("Installing ffmpeg...");
-            await Services.Installer.InstallFfmpegAsync(progress, _toolCts.Token);
+            if (wanted.Contains("yt-dlp"))
+            {
+                Log("Installing yt-dlp...");
+                await Services.Installer.InstallYtDlpAsync(progress, _toolCts.Token);
+            }
+            if (wanted.Contains("ffmpeg"))
+            {
+                Log("Installing ffmpeg...");
+                await Services.Installer.InstallFfmpegAsync(progress, _toolCts.Token);
+            }
             active = false; // ignore progress messages still on their way to the UI thread
             SetStatus(100, "Tools installed.");
             Log($"Tools installed to {Services.Installer.ToolsDir}");

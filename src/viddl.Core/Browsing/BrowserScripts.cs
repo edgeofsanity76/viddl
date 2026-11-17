@@ -57,8 +57,14 @@ public static class BrowserScripts
 
     /// <summary>Start page shown before the user has visited anything.</summary>
     public const string StartPage = """
-        <html><head><meta charset="utf-8"><title>viddl</title></head>
-        <body style="font-family:Segoe UI,sans-serif;color:#333;max-width:640px;margin:60px auto;line-height:1.5">
+        <html><head><meta charset="utf-8"><meta name="color-scheme" content="light dark"><title>viddl</title>
+        <style>
+          body { font-family: "Segoe UI", sans-serif; max-width: 640px; margin: 60px auto; line-height: 1.5; padding: 0 16px;
+                 color: #222; background: #fafafa; }
+          .note { color: #777; }
+          @media (prefers-color-scheme: dark) { body { color: #e6e6e6; background: #1c1c1c; } .note { color: #9a9a9a; } }
+        </style></head>
+        <body>
         <h2>viddl</h2>
         <ol>
           <li>Type a web address in the bar above and press Enter.</li>
@@ -66,7 +72,7 @@ public static class BrowserScripts
           <li>Select one (or several), adjust the name if you like, and click <b>Download selected</b>.</li>
         </ol>
         <p>Have a direct link (.m3u8, .mpd, .mp4) or a page supported by yt-dlp? Paste it and click <b>Download URL</b>.</p>
-        <p style="color:#888">Only download videos you have the right to save. DRM-protected streams are not supported.</p>
+        <p class="note">Only download videos you have the right to save. DRM-protected streams are not supported.</p>
         </body></html>
         """;
 }

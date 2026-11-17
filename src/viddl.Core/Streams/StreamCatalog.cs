@@ -16,6 +16,15 @@ public sealed class SniffedStream
     public string? CustomName { get; set; }
     public DateTime FoundAt { get; init; } = DateTime.Now;
 
+    /// <summary>Best known video height (from the playlist, or a hint in the address); null if unknown.</summary>
+    public int? Height { get; set; }
+
+    /// <summary>"1080p", or empty when the quality isn't known.</summary>
+    public string QualityLabel => Height is int h ? $"{h}p" : "";
+
+    /// <summary>Order of detection (higher = newer); breaks ties when sorting.</summary>
+    internal long Sequence { get; init; }
+
     /// <summary>Identity ignoring the query string (players re-fetch playlists with fresh tokens).</summary>
     public string Key => KeyOf(Uri);
 
@@ -31,7 +40,8 @@ public sealed class SniffedStream
 
 /// <summary>
 /// The list of detected streams: de-duplicates repeated requests, folds the per-quality child playlists of an
-/// HLS master into the master, and keeps titles up to date. UI-independent; the view listens to the events.
+/// HLS master into the master, keeps titles up to date and keeps the list sorted best quality first.
+/// UI-independent; the view listens to the events.
 /// </summary>
 public sealed class StreamCatalog
 {
@@ -39,16 +49,55 @@ public sealed class StreamCatalog
     private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _children = new(StringComparer.OrdinalIgnoreCase);
     private readonly Func<DateTime> _now;
+    private long _sequence;
 
     public StreamCatalog(Func<DateTime>? now = null) => _now = now ?? (() => DateTime.Now);
 
-    /// <summary>Newest first.</summary>
+    /// <summary>Best quality first (see <see cref="CompareQuality"/>).</summary>
     public IReadOnlyList<SniffedStream> Items => _items;
 
     public event Action<SniffedStream>? Added;
     public event Action<SniffedStream>? Removed;
     public event Action<SniffedStream>? Changed;
     public event Action? Cleared;
+
+    /// <summary>Raised when the order of <see cref="Items"/> changed.</summary>
+    public event Action? Reordered;
+
+    /// <summary>
+    /// Sort order for the list: supported streams first, then the highest resolution, then adaptive streams
+    /// (HLS/DASH, usually the main video) before plain files, then the largest file, then the newest.
+    /// </summary>
+    public static int CompareQuality(SniffedStream a, SniffedStream b)
+    {
+        int c = a.Unsupported.CompareTo(b.Unsupported);
+        if (c != 0) return c;
+        c = (b.Height ?? 0).CompareTo(a.Height ?? 0);
+        if (c != 0) return c;
+        c = (a.Kind == StreamKind.Direct).CompareTo(b.Kind == StreamKind.Direct);
+        if (c != 0) return c;
+        c = (b.SizeBytes ?? 0).CompareTo(a.SizeBytes ?? 0);
+        if (c != 0) return c;
+        return b.Sequence.CompareTo(a.Sequence);
+    }
+
+    /// <summary>
+    /// Whether a stream passes the quality filter: at least <paramref name="minHeight"/> pixels tall (0 = any), or of
+    /// unknown resolution when <paramref name="includeUnknown"/> is set.
+    /// </summary>
+    public static bool PassesFilter(SniffedStream s, int minHeight, bool includeUnknown) =>
+        minHeight <= 0 || (s.Height is int h ? h >= minHeight : includeUnknown);
+
+    /// <summary>The streams that pass the quality filter, best quality first.</summary>
+    public IReadOnlyList<SniffedStream> Filtered(int minHeight, bool includeUnknown) =>
+        _items.Where(s => PassesFilter(s, minHeight, includeUnknown)).ToList();
+
+    private void Sort()
+    {
+        var before = _items.ToList();
+        _items.Sort(CompareQuality);
+        if (!before.SequenceEqual(_items)) Reordered?.Invoke();
+    }
 
     /// <summary>
     /// Handles a network response. Returns the new stream (so the caller can probe it), or null if the response
@@ -65,7 +114,11 @@ public sealed class StreamCatalog
         var key = SniffedStream.KeyOf(uri);
         if (_children.Contains(key) || !_seen.Add(key)) return null;
 
-        var s = new SniffedStream { Uri = uri, Kind = kind.Value, PageUrl = pageUrl, Title = title, FoundAt = _now() };
+        var s = new SniffedStream
+        {
+            Uri = uri, Kind = kind.Value, PageUrl = pageUrl, Title = title, FoundAt = _now(),
+            Sequence = ++_sequence, Height = StreamClassifier.HeightFromUrl(url),
+        };
         if (kind == StreamKind.Direct)
         {
             s.SizeBytes = StreamClassifier.TotalSize(contentRange, contentLength, statusCode);
@@ -75,7 +128,8 @@ public sealed class StreamCatalog
         {
             s.Info = "DASH";
         }
-        _items.Insert(0, s);
+        _items.Add(s);
+        _items.Sort(CompareQuality);
         Added?.Invoke(s);
         return s;
     }
@@ -85,6 +139,7 @@ public sealed class StreamCatalog
     {
         s.Info = d.Info;
         s.Unsupported = d.Unsupported;
+        if (d.MaxHeight is int h && h > (s.Height ?? 0)) s.Height = h;
         foreach (var childKey in d.ChildKeys)
         {
             _children.Add(childKey);
@@ -95,7 +150,9 @@ public sealed class StreamCatalog
                 Removed?.Invoke(child);
             }
         }
-        if (_items.Contains(s)) Changed?.Invoke(s);
+        if (!_items.Contains(s)) return;
+        Changed?.Invoke(s);
+        Sort();
     }
 
     /// <summary>Gives streams found before the page title loaded their proper title.</summary>

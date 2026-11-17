@@ -95,7 +95,7 @@
             <Button x:Name="DownloadUrlButton" Grid.Column="8" Content="Download URL"
                     ToolTipService.ToolTip="Download the address-bar link directly (a video link, or a page yt-dlp supports)"
                     Click="DownloadUrlButton_Click" />
-            <DropDownButton x:Name="ShieldButton" Grid.Column="9" ToolTipService.ToolTip="Protection - click for options">
+            <DropDownButton x:Name="ShieldButton" AutomationProperties.Name="Protection" Grid.Column="9" ToolTipService.ToolTip="Protection - click for options">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon x:Name="ShieldIcon" Glyph="&#xE83D;" FontSize="14" />
                     <TextBlock x:Name="ShieldText" Text="Protection" />
@@ -130,14 +130,61 @@
                 <ColumnDefinition x:Name="StreamsColumn" Width="420" />
             </Grid.ColumnDefinitions>
 
-            <WebView2 x:Name="Web" />
-            <TextBlock x:Name="WebViewMissing"
-                       Visibility="Collapsed"
-                       TextWrapping="Wrap"
-                       TextAlignment="Center"
-                       VerticalAlignment="Center"
-                       Margin="40"
-                       Text="The built-in browser needs the Microsoft Edge WebView2 Runtime. Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and restart viddl. You can still paste a video link in the address bar and click Download URL." />
+            <!-- Browser and Preview share this area; switching only changes visibility, so the browser keeps its page. -->
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <SelectorBar x:Name="ViewTabs" Margin="4,0,0,0" SelectionChanged="ViewTabs_SelectionChanged">
+                    <SelectorBarItem x:Name="BrowserTabItem" Text="Browser" IsSelected="True">
+                        <SelectorBarItem.Icon>
+                            <FontIcon Glyph="&#xE774;" />
+                        </SelectorBarItem.Icon>
+                    </SelectorBarItem>
+                    <SelectorBarItem x:Name="PreviewTabItem" Text="Preview">
+                        <SelectorBarItem.Icon>
+                            <FontIcon Glyph="&#xE714;" />
+                        </SelectorBarItem.Icon>
+                    </SelectorBarItem>
+                </SelectorBar>
+
+                <WebView2 x:Name="Web" Grid.Row="1" />
+                <TextBlock x:Name="WebViewMissing"
+                           Grid.Row="1"
+                           Visibility="Collapsed"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           VerticalAlignment="Center"
+                           Margin="40"
+                           Text="The built-in browser needs the Microsoft Edge WebView2 Runtime. Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and restart viddl. You can still paste a video link in the address bar and click Download URL." />
+
+                <Grid x:Name="PreviewPane" Grid.Row="1" Visibility="Collapsed" Padding="8" RowSpacing="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="PreviewTitle" Text="Preview" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Button x:Name="StopPreviewButton" Grid.Column="1" Content="Stop preview" IsEnabled="False" Click="StopPreview_Click" />
+                    </Grid>
+                    <MediaPlayerElement x:Name="Player" Grid.Row="1" AreTransportControlsEnabled="True" Stretch="Uniform" />
+                    <TextBlock x:Name="PreviewMessage"
+                               Grid.Row="1"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               VerticalAlignment="Center"
+                               Margin="40"
+                               Opacity="0.75"
+                               Text="Double-click a download, or right-click a download or detected stream and choose Preview, to watch it here - even while it downloads." />
+                </Grid>
+            </Grid>
 
             <local:Splitter x:Name="StreamsSplitter" Grid.Column="1" Invert="True" Minimum="280" Maximum="900" />
 
@@ -151,12 +198,23 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock x:Name="StreamsHeader" Text="Detected streams" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="StreamsHeader" Text="Detected streams" VerticalAlignment="Center" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <ComboBox x:Name="MinQualityBox"
+                              Grid.Column="1"
+                              MinWidth="140"
+                              ToolTipService.ToolTip="Only show streams of at least this resolution"
+                              SelectionChanged="MinQualityBox_SelectionChanged" />
+                </Grid>
                 <TextBlock x:Name="StreamsHint"
                            Grid.Row="1"
                            TextWrapping="Wrap"
                            Opacity="0.7"
-                           Text="Play a video in the browser - its streams appear here. Select one (or several) and click Download." />
+                           Text="Play a video in the browser - its streams appear here, best quality first. Select one (or several) and click Download." />
 
                 <ListView x:Name="StreamList"
                           Grid.Row="2"
@@ -173,6 +231,10 @@
                                     <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="3" Padding="5,0">
                                         <TextBlock Text="{x:Bind Kind}" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
                                     </Border>
+                                    <Border BorderBrush="{ThemeResource AccentFillColorDefaultBrush}" BorderThickness="1" CornerRadius="3" Padding="5,0"
+                                            Visibility="{x:Bind QualityVisibility, Mode=OneWay}">
+                                        <TextBlock Text="{x:Bind Quality, Mode=OneWay}" FontSize="11" FontWeight="SemiBold" />
+                                    </Border>
                                     <TextBlock Text="{x:Bind Info, Mode=OneWay}" FontSize="12" Opacity="0.75" />
                                 </StackPanel>
                             </StackPanel>
@@ -181,6 +243,7 @@
                     <ListView.ContextFlyout>
                         <MenuFlyout>
                             <MenuFlyoutItem Text="Download" Click="DownloadSelected_Click" />
+                            <MenuFlyoutItem Text="Preview" Click="PreviewStream_Click" />
                             <MenuFlyoutItem Text="Copy URL" Click="CopyStreamUrl_Click" />
                             <MenuFlyoutItem Text="Remove from list" Click="RemoveStreams_Click" />
                         </MenuFlyout>
@@ -195,10 +258,15 @@
                             <TextBlock x:Name="DownloadSelectedText" Text="Download selected" />
                         </StackPanel>
                     </Button>
-                    <Button x:Name="CopyUrlButton" Content="Copy URL" IsEnabled="False" Click="CopyStreamUrl_Click" />
                     <Button Content="Clear" Click="ClearStreams_Click" />
                 </StackPanel>
-                <CheckBox x:Name="ClearOnNavigate" Grid.Row="5" Content="Clear list when I open another page" Click="ClearOnNavigate_Click" />
+                <StackPanel Grid.Row="5">
+                    <CheckBox x:Name="ShowUnknownQuality"
+                              Content="Show streams of unknown quality"
+                              ToolTipService.ToolTip="Some streams only reveal their resolution once checked, and some never do"
+                              Click="ShowUnknownQuality_Click" />
+                    <CheckBox x:Name="ClearOnNavigate" Content="Clear list when I open another page" Click="ClearOnNavigate_Click" />
+                </StackPanel>
             </Grid>
         </Grid>
 
@@ -213,29 +281,32 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel Orientation="Horizontal" Spacing="8" Padding="0,0,0,4">
+            <!-- Download options on the left, queue controls and settings on the right -->
+            <Grid ColumnSpacing="8" Padding="0,2,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Spacing="6">
                     <TextBlock Text="Save to" VerticalAlignment="Center" />
-                    <TextBox x:Name="FolderBox" Width="260" />
+                    <TextBox x:Name="FolderBox" Width="230" />
                     <Button ToolTipService.ToolTip="Choose folder" Click="BrowseFolder_Click">
                         <FontIcon Glyph="&#xE838;" FontSize="14" />
                     </Button>
-                    <Button Content="Open folder" Click="OpenFolder_Click" />
-                    <TextBlock Text="Quality" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    <Button ToolTipService.ToolTip="Open the folder in File Explorer" Click="OpenFolder_Click">
+                        <FontIcon Glyph="&#xE8A7;" FontSize="14" />
+                    </Button>
+                    <TextBlock Text="Quality" VerticalAlignment="Center" Margin="10,0,0,0" />
                     <ComboBox x:Name="QualityBox" Width="140" />
-                    <TextBlock Text="Parallel" VerticalAlignment="Center" Margin="8,0,0,0" />
-                    <NumberBox x:Name="ParallelBox" Minimum="1" Maximum="16" SmallChange="1" Width="110"
-                               SpinButtonPlacementMode="Compact"
-                               ToolTipService.ToolTip="Simultaneous segment downloads. Lower this (1-2) if a site starts refusing requests." />
-                    <DropDownButton Content="Settings">
-                        <DropDownButton.Flyout>
-                            <MenuFlyout x:Name="SettingsFlyout" Placement="TopEdgeAlignedLeft" />
-                        </DropDownButton.Flyout>
-                    </DropDownButton>
-                    <Button x:Name="StartQueueButton" IsEnabled="False" Click="StartQueue_Click">
+                    <TextBlock Text="Convert to" VerticalAlignment="Center" Margin="10,0,0,0" />
+                    <ComboBox x:Name="ConvertBox" Width="170"
+                              ToolTipService.ToolTip="Convert every download once it's saved. Right-click a finished download to convert it later." />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <Button x:Name="StartQueueButton" IsEnabled="False" ToolTipService.ToolTip="Start downloads that are waiting" Click="StartQueue_Click">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <FontIcon Glyph="&#xE768;" FontSize="12" />
-                            <TextBlock Text="Start queue" />
+                            <TextBlock Text="Start" />
                         </StackPanel>
                     </Button>
                     <Button x:Name="StopButton" IsEnabled="False" ToolTipService.ToolTip="Stop the current download (Esc). Waiting items stay in the queue." Click="Stop_Click">
@@ -244,15 +315,40 @@
                             <TextBlock Text="Stop" />
                         </StackPanel>
                     </Button>
-                    <TextBlock x:Name="ToolsWarning" VerticalAlignment="Center" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" />
+                    <Button x:Name="ClearListButton" IsEnabled="False" ToolTipService.ToolTip="Remove everything from the downloads list except the download in progress" Click="ClearList_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE74D;" FontSize="12" />
+                            <TextBlock Text="Clear list" />
+                        </StackPanel>
+                    </Button>
+                    <DropDownButton x:Name="SettingsButton" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE713;" FontSize="14" />
+                            <TextBlock Text="Settings" />
+                        </StackPanel>
+                        <DropDownButton.Flyout>
+                            <MenuFlyout x:Name="SettingsFlyout" Placement="TopEdgeAlignedRight" />
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
                 </StackPanel>
-            </ScrollViewer>
+            </Grid>
 
             <ProgressBar x:Name="Progress" Grid.Row="1" Maximum="100" />
-            <TextBlock x:Name="StatusText" Grid.Row="2" Text="Ready." TextTrimming="CharacterEllipsis" Opacity="0.85" />
+            <Grid Grid.Row="2" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText" Text="Ready." TextTrimming="CharacterEllipsis" Opacity="0.85" />
+                <TextBlock x:Name="ToolsWarning" Grid.Column="1" Tapped="ToolsWarning_Tapped" ToolTipService.ToolTip="Download the missing tools" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" />
+            </Grid>
 
             <TabView x:Name="Tabs" Grid.Row="3" IsAddTabButtonVisible="False" CanReorderTabs="False" CanDragTabs="False" TabWidthMode="SizeToContent">
                 <TabViewItem x:Name="DownloadsTab" Header="Downloads" IsClosable="False">
+                    <Grid>
+                    <TextBlock x:Name="QueueEmptyHint"
+                               Text="Nothing here yet. Downloads appear here, newest first. Double-click one to preview it."
+                               Opacity="0.6" Margin="12" TextWrapping="Wrap" />
                     <ListView x:Name="QueueList"
                               SelectionMode="Extended"
                               ItemsSource="{x:Bind QueueRows}"
@@ -277,17 +373,22 @@
                         </ListView.ItemTemplate>
                         <ListView.ContextFlyout>
                             <MenuFlyout Opening="QueueMenu_Opening">
-                                <MenuFlyoutItem x:Name="PlayItem" Text="Play" Click="PlayItem_Click" />
+                                <MenuFlyoutItem x:Name="PreviewQueueMenuItem" Text="Preview" Click="PreviewQueueItem_Click" />
+                                <MenuFlyoutItem x:Name="PlayItem" Text="Play in default player" Click="PlayItem_Click" />
                                 <MenuFlyoutItem x:Name="ShowItem" Text="Show in folder" Click="ShowItem_Click" />
                                 <MenuFlyoutSeparator />
+                                <MenuFlyoutSubItem x:Name="ConvertItem" Text="Convert to" />
+                                <MenuFlyoutItem x:Name="EditTagsItem" Text="Edit tags…" Click="EditTags_Click" />
                                 <MenuFlyoutItem x:Name="RetryItem" Text="Retry" Click="RetryItem_Click" />
                                 <MenuFlyoutItem x:Name="CopyQueueUrlItem" Text="Copy URL" Click="CopyQueueUrl_Click" />
                                 <MenuFlyoutItem x:Name="RemoveQueueItem" Text="Remove" Click="RemoveQueueItem_Click" />
                                 <MenuFlyoutSeparator />
                                 <MenuFlyoutItem Text="Clear finished" Click="ClearFinished_Click" />
+                                <MenuFlyoutItem Text="Clear list" Click="ClearList_Click" />
                             </MenuFlyout>
                         </ListView.ContextFlyout>
                     </ListView>
+                    </Grid>
                 </TabViewItem>
                 <TabViewItem x:Name="LogTab" Header="Log" IsClosable="False">
                     <TextBox x:Name="LogBox"

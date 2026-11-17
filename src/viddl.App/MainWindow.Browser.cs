@@ -33,6 +33,7 @@ public sealed partial class MainWindow
         }
         catch (Exception ex)
         {
+            _webAvailable = false;
             Web.Visibility = Visibility.Collapsed;
             WebViewMissing.Visibility = Visibility.Visible;
             Log("The built-in browser could not start: " + ex.Message);
