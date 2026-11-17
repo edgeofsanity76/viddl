@@ -1,5 +1,8 @@
 # viddl
 
+[![Build](https://github.com/edgeofsanity76/viddl/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/edgeofsanity76/viddl/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/edgeofsanity76/viddl?label=release)](https://github.com/edgeofsanity76/viddl/releases/latest)
+
 viddl is a Windows desktop app for saving online videos as MP4 files. It has a built-in browser that
 watches network traffic while a video plays, lists the streams it finds, and downloads the one you pick.
 Downloads are converted to MP4 without re-encoding.
@@ -46,7 +49,7 @@ downloaded. Only download videos you have the right to save.
 ### Visual Studio
 
 1. Open `viddl.sln`.
-2. Set **viddl.App** as the startup project and choose the **x64** (or **ARM64**) platform.
+2. Set **viddl.App** as the startup project and choose the **x64**, **x86** or **ARM64** platform.
 3. Press **F5**.
 
 ### Command line
@@ -140,15 +143,44 @@ stand-ins for ffmpeg and yt-dlp, with no network access or real waiting.
 
 1. **Build and test** – builds the solution in Release, runs the unit tests and adds a coverage table to the run
    summary. Test results are kept as a `test-results` artifact.
-2. **Publish** – produces self-contained builds for `win-x64` and `win-arm64` (the .NET runtime and the
-   Windows App SDK are included, so nothing needs installing) and zips them as `viddl-<version>-<platform>.zip`.
-3. **Release** – on pushes to `main` only, tags the commit `v<version>` and creates a GitHub release with both
-   zips attached and notes generated from the changes since the previous release.
+2. **Publish** – produces self-contained builds for `win-x64`, `win-x86` (32-bit Windows) and `win-arm64`
+   (the .NET runtime and the Windows App SDK are included, so nothing needs installing) and zips them as
+   `viddl-<version>-<platform>.zip`.
+3. **Release** – on pushes to `main` only, tags the commit `v<version>` and creates a GitHub release with the
+   three zips attached and notes generated from the changes since the previous release.
 
 Versions are `major.minor.run`: the major and minor numbers come from `Directory.Build.props` and the last part is
 the workflow run number, so every build of `main` gets a new tag and release (for example `v2.0.57`). To start a
 new series, change `<Version>` in `Directory.Build.props` (for example to `2.1.0`). Local builds use the version
 from that file as-is.
+
+### Gitea
+
+[`.gitea/workflows/build.yml`](.gitea/workflows/build.yml) does the same build, test and publish for a copy of the
+repository on a Gitea server (Gitea uses the `.gitea` folder and GitHub ignores it, so each server runs its own
+workflow).
+
+**Setup**
+
+1. Enable Actions on the Gitea server and in the repository settings.
+2. Register a **Windows** [act_runner](https://docs.gitea.com/usage/actions/act-runner) with the label `windows`
+   (WinUI apps can only be built on Windows) on a machine with Git installed. The workflow installs the .NET SDK
+   itself.
+3. Optional: if the workflow's automatic token isn't allowed to create releases on your server, add a personal access
+   token with repository write access as the repository secret `RELEASE_TOKEN`.
+
+**How releases work there**
+
+- When a `v*` tag arrives (for example mirrored from GitHub, where every build of `main` creates one), the workflow
+  builds exactly that version and attaches the three zips to a Gitea release for the same tag, with notes listing
+  the commits since the previous tag.
+- Pushes to `main` only build and test, so the Gitea copy never creates tags that clash with mirrored ones.
+- If Gitea is your primary server instead, set the repository variable `CREATE_TAGS` to `true`: every build of `main`
+  then gets its own `v<major>.<minor>.<run>` tag and release, as on GitHub.
+
+Mirroring notes: a push mirror (GitHub or your machine pushing to Gitea) behaves like normal pushes. With a pull mirror
+(Gitea fetching from GitHub), whether a sync starts workflows and whether releases can be added to the mirror depend
+on your Gitea version and settings; you can always start the workflow by hand from the repository's Actions tab.
 
 ## Tests
 

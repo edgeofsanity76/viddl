@@ -68,6 +68,8 @@ jobs:
         include:
           - platform: x64
             rid: win-x64
+          - platform: x86
+            rid: win-x86
           - platform: ARM64
             rid: win-arm64
     env:
