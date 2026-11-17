@@ -133,6 +133,23 @@ The libraries have no UI dependencies. Network access, external programs, tool l
 download engines through `DownloadEnvironment`, so tests run against an in-memory HTTP server and scripted
 stand-ins for ffmpeg and yt-dlp, with no network access or real waiting.
 
+## Builds and releases
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) runs on every push and pull request to `main`
+(and can be started by hand from the Actions tab):
+
+1. **Build and test** – builds the solution in Release, runs the unit tests and adds a coverage table to the run
+   summary. Test results are kept as a `test-results` artifact.
+2. **Publish** – produces self-contained builds for `win-x64` and `win-arm64` (the .NET runtime and the
+   Windows App SDK are included, so nothing needs installing) and zips them as `viddl-<version>-<platform>.zip`.
+3. **Release** – on pushes to `main` only, tags the commit `v<version>` and creates a GitHub release with both
+   zips attached and notes generated from the changes since the previous release.
+
+Versions are `major.minor.run`: the major and minor numbers come from `Directory.Build.props` and the last part is
+the workflow run number, so every build of `main` gets a new tag and release (for example `v2.0.57`). To start a
+new series, change `<Version>` in `Directory.Build.props` (for example to `2.1.0`). Local builds use the version
+from that file as-is.
+
 ## Tests
 
 ```powershell
