@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>Viddl.App</RootNamespace>
+    <AssemblyName>viddl</AssemblyName>
+    <Product>viddl</Product>
+    <AssemblyTitle>viddl</AssemblyTitle>
+    <Version>2.0.0</Version>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Build for the machine's architecture when no platform is chosen (e.g. "dotnet build"). -->
+  <PropertyGroup Condition="'$(Platform)' == '' Or '$(Platform)' == 'AnyCPU'">
+    <Platform>x64</Platform>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RuntimeIdentifier Condition="'$(Platform)' == 'x64'">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="'$(Platform)' == 'ARM64'">win-arm64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!--
+    Some Windows App SDK build steps look up Visual C++ tool paths, which only C++ projects use. On a Visual Studio
+    installation without the C++ workload that lookup fails ("GetLatestMSVCVersion ... VC\Tools\MSVC not found").
+    Giving the tools folder a placeholder value makes those steps skip the lookup.
+  -->
+  <PropertyGroup Condition="'$(VCToolsInstallDir)' == '' And '$(VsInstallRoot)' != '' And !Exists('$(VsInstallRoot)\VC\Tools\MSVC')">
+    <VCToolsInstallDir>$(MSBuildProjectDirectory)\obj\no-msvc\</VCToolsInstallDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250108002" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\viddl.Core\viddl.Core.csproj" />
+    <ProjectReference Include="..\viddl.Downloads\viddl.Downloads.csproj" />
+  </ItemGroup>
+
+</Project>

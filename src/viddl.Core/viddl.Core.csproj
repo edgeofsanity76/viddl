@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Viddl.Core</RootNamespace>
+    <AssemblyName>viddl.Core</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>2.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="viddl.Core.Tests" />
+  </ItemGroup>
+
+</Project>

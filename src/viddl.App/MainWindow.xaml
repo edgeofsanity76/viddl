@@ -1,0 +1,305 @@
+<Window
+    x:Class="Viddl.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Viddl.App"
+>
+
+    <Grid x:Name="Root"
+          AllowDrop="True"
+          DragOver="Root_DragOver"
+          Drop="Root_Drop"
+          KeyboardAcceleratorPlacementMode="Hidden"
+          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="6" />
+            <RowDefinition x:Name="DownloadsRow" Height="260" />
+        </Grid.RowDefinitions>
+
+        <!-- Navigation bar -->
+        <Grid Padding="8,6,8,6" ColumnSpacing="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="BackButton" IsEnabled="False" ToolTipService.ToolTip="Back (Alt+Left)" Click="BackButton_Click">
+                <FontIcon Glyph="&#xE72B;" FontSize="14" />
+            </Button>
+            <Button x:Name="ForwardButton" Grid.Column="1" IsEnabled="False" ToolTipService.ToolTip="Forward (Alt+Right)" Click="ForwardButton_Click">
+                <FontIcon Glyph="&#xE72A;" FontSize="14" />
+            </Button>
+            <Button x:Name="ReloadButton" Grid.Column="2" ToolTipService.ToolTip="Reload (F5)" Click="ReloadButton_Click">
+                <FontIcon Glyph="&#xE72C;" FontSize="14" />
+            </Button>
+
+            <!-- Strict mode indicator, beside the address like a browser's site-security icon. Always shown:
+                 orange "Strict" when strict mode applies to this page, a grey open lock when it doesn't. -->
+            <Button x:Name="StrictBadge"
+                    Grid.Column="3"
+                    Margin="4,0,0,0"
+                    Padding="8,4"
+                    Click="StrictBadge_Click">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon x:Name="StrictBadgeIcon" Glyph="&#xE785;" FontSize="13" />
+                    <TextBlock x:Name="StrictBadgeText" Text="Strict" FontWeight="SemiBold" Visibility="Collapsed" />
+                </StackPanel>
+            </Button>
+
+            <AutoSuggestBox x:Name="Address"
+                            Grid.Column="4"
+                            Margin="0"
+                            PlaceholderText="Search or enter a web address, or paste a video link"
+                            TextMemberPath="Url"
+                            UpdateTextOnSelect="False"
+                            TextChanged="Address_TextChanged"
+                            QuerySubmitted="Address_QuerySubmitted"
+                            GotFocus="Address_GotFocus">
+                <AutoSuggestBox.ItemTemplate>
+                    <DataTemplate x:DataType="local:SuggestionRow">
+                        <Grid ColumnSpacing="10" Padding="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="20" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{x:Bind Glyph}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{x:Bind Url}" TextTrimming="CharacterEllipsis" FontSize="12" Opacity="0.65" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </AutoSuggestBox.ItemTemplate>
+            </AutoSuggestBox>
+
+            <Button x:Name="StarButton" Grid.Column="5" IsEnabled="False" ToolTipService.ToolTip="Add or remove this page from favorites (Ctrl+D)" Click="StarButton_Click">
+                <FontIcon x:Name="StarIcon" Glyph="&#xE734;" FontSize="14" />
+            </Button>
+            <Button x:Name="GoButton" Grid.Column="6" Content="Go" Click="GoButton_Click" />
+            <DropDownButton x:Name="FavoritesButton" Grid.Column="7" Content="Favorites" ToolTipService.ToolTip="Favorites and recently visited sites">
+                <DropDownButton.Flyout>
+                    <MenuFlyout x:Name="FavoritesFlyout" Placement="BottomEdgeAlignedRight" Opening="FavoritesFlyout_Opening" />
+                </DropDownButton.Flyout>
+            </DropDownButton>
+            <Button x:Name="DownloadUrlButton" Grid.Column="8" Content="Download URL"
+                    ToolTipService.ToolTip="Download the address-bar link directly (a video link, or a page yt-dlp supports)"
+                    Click="DownloadUrlButton_Click" />
+            <DropDownButton x:Name="ShieldButton" Grid.Column="9" ToolTipService.ToolTip="Protection - click for options">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon x:Name="ShieldIcon" Glyph="&#xE83D;" FontSize="14" />
+                    <TextBlock x:Name="ShieldText" Text="Protection" />
+                </StackPanel>
+                <DropDownButton.Flyout>
+                    <MenuFlyout x:Name="ShieldFlyout" Placement="BottomEdgeAlignedRight" Opening="ShieldFlyout_Opening" />
+                </DropDownButton.Flyout>
+            </DropDownButton>
+        </Grid>
+
+        <!-- Shown when strict mode is switched on automatically for a site -->
+        <InfoBar x:Name="StrictNotice"
+                 Grid.Row="1"
+                 Margin="8,0,8,6"
+                 IsOpen="False"
+                 Severity="Warning"
+                 Title="Strict mode switched on"
+                 Closed="StrictNotice_Closed">
+            <InfoBar.ActionButton>
+                <Button Content="Reload page" Click="StrictNoticeReload_Click" />
+            </InfoBar.ActionButton>
+            <InfoBar.Content>
+                <HyperlinkButton Content="Undo for this site" Margin="0,0,0,8" Click="StrictNoticeUndo_Click" />
+            </InfoBar.Content>
+        </InfoBar>
+
+        <!-- Browser and detected streams -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition x:Name="StreamsColumn" Width="420" />
+            </Grid.ColumnDefinitions>
+
+            <WebView2 x:Name="Web" />
+            <TextBlock x:Name="WebViewMissing"
+                       Visibility="Collapsed"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       VerticalAlignment="Center"
+                       Margin="40"
+                       Text="The built-in browser needs the Microsoft Edge WebView2 Runtime. Install it from https://developer.microsoft.com/microsoft-edge/webview2/ and restart viddl. You can still paste a video link in the address bar and click Download URL." />
+
+            <local:Splitter x:Name="StreamsSplitter" Grid.Column="1" Invert="True" Minimum="280" Maximum="900" />
+
+            <Grid Grid.Column="2" Padding="10,6,10,6" RowSpacing="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Name="StreamsHeader" Text="Detected streams" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock x:Name="StreamsHint"
+                           Grid.Row="1"
+                           TextWrapping="Wrap"
+                           Opacity="0.7"
+                           Text="Play a video in the browser - its streams appear here. Select one (or several) and click Download." />
+
+                <ListView x:Name="StreamList"
+                          Grid.Row="2"
+                          SelectionMode="Extended"
+                          ItemsSource="{x:Bind StreamRows}"
+                          SelectionChanged="StreamList_SelectionChanged"
+                          DoubleTapped="StreamList_DoubleTapped"
+                          KeyDown="StreamList_KeyDown">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:StreamRow">
+                            <StackPanel Padding="0,6" Opacity="{x:Bind RowOpacity, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind Tooltip, Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Name, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2,0,0">
+                                    <Border Background="{ThemeResource AccentFillColorDefaultBrush}" CornerRadius="3" Padding="5,0">
+                                        <TextBlock Text="{x:Bind Kind}" FontSize="11" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                                    </Border>
+                                    <TextBlock Text="{x:Bind Info, Mode=OneWay}" FontSize="12" Opacity="0.75" />
+                                </StackPanel>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                    <ListView.ContextFlyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem Text="Download" Click="DownloadSelected_Click" />
+                            <MenuFlyoutItem Text="Copy URL" Click="CopyStreamUrl_Click" />
+                            <MenuFlyoutItem Text="Remove from list" Click="RemoveStreams_Click" />
+                        </MenuFlyout>
+                    </ListView.ContextFlyout>
+                </ListView>
+
+                <TextBox x:Name="NameBox" Grid.Row="3" PlaceholderText="File name (defaults to the page title)" IsEnabled="False" TextChanged="NameBox_TextChanged" />
+                <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="6">
+                    <Button x:Name="DownloadSelectedButton" Style="{StaticResource AccentButtonStyle}" IsEnabled="False" Click="DownloadSelected_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE896;" FontSize="14" />
+                            <TextBlock x:Name="DownloadSelectedText" Text="Download selected" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="CopyUrlButton" Content="Copy URL" IsEnabled="False" Click="CopyStreamUrl_Click" />
+                    <Button Content="Clear" Click="ClearStreams_Click" />
+                </StackPanel>
+                <CheckBox x:Name="ClearOnNavigate" Grid.Row="5" Content="Clear list when I open another page" Click="ClearOnNavigate_Click" />
+            </Grid>
+        </Grid>
+
+        <local:Splitter x:Name="DownloadsSplitter" Grid.Row="3" Horizontal="True" Invert="True" Minimum="150" Maximum="800" />
+
+        <!-- Downloads -->
+        <Grid Grid.Row="4" Padding="10,2,10,8" RowSpacing="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal" Spacing="8" Padding="0,0,0,4">
+                    <TextBlock Text="Save to" VerticalAlignment="Center" />
+                    <TextBox x:Name="FolderBox" Width="260" />
+                    <Button ToolTipService.ToolTip="Choose folder" Click="BrowseFolder_Click">
+                        <FontIcon Glyph="&#xE838;" FontSize="14" />
+                    </Button>
+                    <Button Content="Open folder" Click="OpenFolder_Click" />
+                    <TextBlock Text="Quality" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    <ComboBox x:Name="QualityBox" Width="140" />
+                    <TextBlock Text="Parallel" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    <NumberBox x:Name="ParallelBox" Minimum="1" Maximum="16" SmallChange="1" Width="110"
+                               SpinButtonPlacementMode="Compact"
+                               ToolTipService.ToolTip="Simultaneous segment downloads. Lower this (1-2) if a site starts refusing requests." />
+                    <DropDownButton Content="Settings">
+                        <DropDownButton.Flyout>
+                            <MenuFlyout x:Name="SettingsFlyout" Placement="TopEdgeAlignedLeft" />
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                    <Button x:Name="StartQueueButton" IsEnabled="False" Click="StartQueue_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE768;" FontSize="12" />
+                            <TextBlock Text="Start queue" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="StopButton" IsEnabled="False" ToolTipService.ToolTip="Stop the current download (Esc). Waiting items stay in the queue." Click="Stop_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE71A;" FontSize="12" />
+                            <TextBlock Text="Stop" />
+                        </StackPanel>
+                    </Button>
+                    <TextBlock x:Name="ToolsWarning" VerticalAlignment="Center" Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <ProgressBar x:Name="Progress" Grid.Row="1" Maximum="100" />
+            <TextBlock x:Name="StatusText" Grid.Row="2" Text="Ready." TextTrimming="CharacterEllipsis" Opacity="0.85" />
+
+            <TabView x:Name="Tabs" Grid.Row="3" IsAddTabButtonVisible="False" CanReorderTabs="False" CanDragTabs="False" TabWidthMode="SizeToContent">
+                <TabViewItem x:Name="DownloadsTab" Header="Downloads" IsClosable="False">
+                    <ListView x:Name="QueueList"
+                              SelectionMode="Extended"
+                              ItemsSource="{x:Bind QueueRows}"
+                              DoubleTapped="QueueList_DoubleTapped"
+                              KeyDown="QueueList_KeyDown">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:QueueRow">
+                                <Grid ColumnSpacing="12" Padding="0,4" ToolTipService.ToolTip="{x:Bind Url}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="3*" />
+                                        <ColumnDefinition Width="2*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="{x:Bind Status, Mode=OneWay}" TextTrimming="CharacterEllipsis" FontSize="12" />
+                                        <ProgressBar Value="{x:Bind Percent, Mode=OneWay}" Maximum="100" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{x:Bind OutputPath, Mode=OneWay}" TextTrimming="CharacterEllipsis" FontSize="12" Opacity="0.7" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                        <ListView.ContextFlyout>
+                            <MenuFlyout Opening="QueueMenu_Opening">
+                                <MenuFlyoutItem x:Name="PlayItem" Text="Play" Click="PlayItem_Click" />
+                                <MenuFlyoutItem x:Name="ShowItem" Text="Show in folder" Click="ShowItem_Click" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem x:Name="RetryItem" Text="Retry" Click="RetryItem_Click" />
+                                <MenuFlyoutItem x:Name="CopyQueueUrlItem" Text="Copy URL" Click="CopyQueueUrl_Click" />
+                                <MenuFlyoutItem x:Name="RemoveQueueItem" Text="Remove" Click="RemoveQueueItem_Click" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="Clear finished" Click="ClearFinished_Click" />
+                            </MenuFlyout>
+                        </ListView.ContextFlyout>
+                    </ListView>
+                </TabViewItem>
+                <TabViewItem x:Name="LogTab" Header="Log" IsClosable="False">
+                    <TextBox x:Name="LogBox"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="Consolas"
+                             FontSize="12"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                </TabViewItem>
+            </TabView>
+        </Grid>
+    </Grid>
+</Window>

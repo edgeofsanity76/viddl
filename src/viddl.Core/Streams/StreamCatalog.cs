@@ -1,0 +1,134 @@
+using Viddl.Core.Models;
+using Viddl.Core.Text;
+
+namespace Viddl.Core.Streams;
+
+/// <summary>A video stream seen in the browser's network traffic.</summary>
+public sealed class SniffedStream
+{
+    public required Uri Uri { get; init; }
+    public required StreamKind Kind { get; init; }
+    public required string PageUrl { get; init; }
+    public string? Title { get; set; }
+    public string Info { get; set; } = "checking…";
+    public bool Unsupported { get; set; }
+    public long? SizeBytes { get; set; }
+    public string? CustomName { get; set; }
+    public DateTime FoundAt { get; init; } = DateTime.Now;
+
+    /// <summary>Identity ignoring the query string (players re-fetch playlists with fresh tokens).</summary>
+    public string Key => KeyOf(Uri);
+
+    public static string KeyOf(Uri uri) => uri.GetLeftPart(UriPartial.Path);
+
+    public string DisplayName =>
+        !string.IsNullOrWhiteSpace(CustomName) ? CustomName! :
+        !string.IsNullOrWhiteSpace(Title) ? Title! :
+        Uri.Segments.LastOrDefault()?.Trim('/') is { Length: > 0 } last ? last : Uri.Host;
+
+    public string KindLabel => Kind switch { StreamKind.Hls => "HLS", StreamKind.Dash => "DASH", _ => "File" };
+}
+
+/// <summary>
+/// The list of detected streams: de-duplicates repeated requests, folds the per-quality child playlists of an
+/// HLS master into the master, and keeps titles up to date. UI-independent; the view listens to the events.
+/// </summary>
+public sealed class StreamCatalog
+{
+    private readonly List<SniffedStream> _items = new();
+    private readonly HashSet<string> _seen = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _children = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Func<DateTime> _now;
+
+    public StreamCatalog(Func<DateTime>? now = null) => _now = now ?? (() => DateTime.Now);
+
+    /// <summary>Newest first.</summary>
+    public IReadOnlyList<SniffedStream> Items => _items;
+
+    public event Action<SniffedStream>? Added;
+    public event Action<SniffedStream>? Removed;
+    public event Action<SniffedStream>? Changed;
+    public event Action? Cleared;
+
+    /// <summary>
+    /// Handles a network response. Returns the new stream (so the caller can probe it), or null if the response
+    /// isn't a new stream.
+    /// </summary>
+    public SniffedStream? OnResponse(string url, string? contentType, int statusCode, string pageUrl, string? title,
+        string? contentRange = null, string? contentLength = null)
+    {
+        if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) || statusCode >= 400) return null;
+        var kind = StreamClassifier.ClassifyResponse(url, contentType);
+        if (kind == null) return null;
+
+        var uri = new Uri(url);
+        var key = SniffedStream.KeyOf(uri);
+        if (_children.Contains(key) || !_seen.Add(key)) return null;
+
+        var s = new SniffedStream { Uri = uri, Kind = kind.Value, PageUrl = pageUrl, Title = title, FoundAt = _now() };
+        if (kind == StreamKind.Direct)
+        {
+            s.SizeBytes = StreamClassifier.TotalSize(contentRange, contentLength, statusCode);
+            s.Info = s.SizeBytes is long b ? Formatting.FileSize(b) : "video file";
+        }
+        else if (kind == StreamKind.Dash)
+        {
+            s.Info = "DASH";
+        }
+        _items.Insert(0, s);
+        Added?.Invoke(s);
+        return s;
+    }
+
+    /// <summary>Applies what probing an HLS playlist found out.</summary>
+    public void ApplyDescription(SniffedStream s, HlsDescription d)
+    {
+        s.Info = d.Info;
+        s.Unsupported = d.Unsupported;
+        foreach (var childKey in d.ChildKeys)
+        {
+            _children.Add(childKey);
+            var child = _items.FirstOrDefault(i => string.Equals(i.Key, childKey, StringComparison.OrdinalIgnoreCase));
+            if (child != null && !ReferenceEquals(child, s))
+            {
+                _items.Remove(child);
+                Removed?.Invoke(child);
+            }
+        }
+        if (_items.Contains(s)) Changed?.Invoke(s);
+    }
+
+    /// <summary>Gives streams found before the page title loaded their proper title.</summary>
+    public void UpdateTitles(string pageUrl, string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return;
+        foreach (var s in _items.Where(i => i.PageUrl == pageUrl && string.IsNullOrWhiteSpace(i.CustomName) && i.Title != title))
+        {
+            s.Title = title;
+            Changed?.Invoke(s);
+        }
+    }
+
+    public void Rename(SniffedStream s, string? name)
+    {
+        s.CustomName = name;
+        Changed?.Invoke(s);
+    }
+
+    /// <summary>Removes a stream; it can be detected again if the page requests it again.</summary>
+    public void Remove(SniffedStream s)
+    {
+        if (!_items.Remove(s)) return;
+        _seen.Remove(s.Key);
+        Removed?.Invoke(s);
+    }
+
+    /// <summary>Forgets everything (e.g. when a new page loads).</summary>
+    public void Clear()
+    {
+        _items.Clear();
+        _seen.Clear();
+        _children.Clear();
+        Cleared?.Invoke();
+    }
+}
