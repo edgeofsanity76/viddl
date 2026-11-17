@@ -8,6 +8,9 @@
   <PropertyGroup>
     <Version>2.0.0</Version>
     <Product>viddl</Product>
+    <Company>viddl</Company>
+    <Description>viddl - save online videos as MP4</Description>
+    <Copyright>Copyright © viddl contributors</Copyright>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 

@@ -188,53 +188,33 @@ public class SettingsTests
     }
 
     [Fact]
-    public void AppPaths_layout()
+    public void AppPaths_keep_everything_in_the_local_data_folder()
     {
-        var p = new AppPaths("R", "L");
-        Assert.Equal(Path.Combine("R", "viddl"), p.SettingsDir);
-        Assert.Equal(Path.Combine("R", "viddl", "settings.json"), p.SettingsFile);
+        var p = new AppPaths("L");
+        Assert.Equal("L", p.LocalRoot);
         Assert.Equal(Path.Combine("L", "viddl"), p.DataDir);
+        Assert.Equal(Path.Combine("L", "viddl", "settings.json"), p.SettingsFile);
         Assert.Equal(Path.Combine("L", "viddl", "tools"), p.ToolsDir);
         Assert.Equal(Path.Combine("L", "viddl", "WebView2"), p.BrowserProfileDir);
 
         var user = AppPaths.ForCurrentUser();
-        Assert.False(string.IsNullOrEmpty(user.RoamingRoot));
-        Assert.False(string.IsNullOrEmpty(user.LocalRoot));
+        Assert.Equal(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), user.LocalRoot);
     }
 
     [Fact]
-    public void MigrateLegacyData_copies_old_folders_once()
+    public void New_installation_starts_with_default_settings()
     {
-        using var roaming = new TempDir();
         using var local = new TempDir();
-        roaming.Write(Path.Combine(AppPaths.LegacyFolderName, "settings.json"), "{}");
-        local.Write(Path.Combine(AppPaths.LegacyFolderName, "tools", "ffmpeg.exe"), "exe");
-        var paths = new AppPaths(roaming.Path, local.Path);
+        var paths = new AppPaths(local.Path);
+        var s = new SettingsStore(paths.SettingsFile).Load();
 
-        var migrated = paths.MigrateLegacyData();
-
-        Assert.Equal(2, migrated.Count);
-        Assert.True(File.Exists(paths.SettingsFile));
-        Assert.True(File.Exists(Path.Combine(paths.ToolsDir, "ffmpeg.exe")));
-        Assert.Empty(paths.MigrateLegacyData()); // already migrated
-    }
-
-    [Fact]
-    public void MigrateLegacyData_does_nothing_without_old_folders()
-    {
-        using var roaming = new TempDir();
-        using var local = new TempDir();
-        Assert.Empty(new AppPaths(roaming.Path, local.Path).MigrateLegacyData());
-    }
-
-    [Fact]
-    public void CopyDirectory_skips_files_that_already_exist()
-    {
-        using var src = new TempDir();
-        using var dst = new TempDir();
-        src.Write("a.txt", "new");
-        dst.Write("a.txt", "old");
-        AppPaths.CopyDirectory(src.Path, dst.Path);
-        Assert.Equal("old", File.ReadAllText(dst.File("a.txt")));
+        Assert.Null(s.Folder);
+        Assert.Null(s.LastUrl);
+        Assert.Empty(s.Favorites);
+        Assert.Empty(s.History);
+        Assert.False(s.StrictScripts);
+        Assert.True(s.AutoStrict);
+        Assert.True(s.Protection);
+        Assert.False(File.Exists(paths.SettingsFile)); // nothing is written until the app saves
     }
 }

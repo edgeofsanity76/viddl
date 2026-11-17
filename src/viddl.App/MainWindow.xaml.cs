@@ -39,6 +39,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Services = new Services();
         Title = "viddl";
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "viddl.ico"));
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
 
         RestorePlacement();

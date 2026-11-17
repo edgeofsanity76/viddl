@@ -15,6 +15,7 @@
     <Platforms>x64;x86;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\viddl.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
@@ -37,6 +38,10 @@
   <PropertyGroup Condition="'$(VCToolsInstallDir)' == '' And '$(VsInstallRoot)' != '' And !Exists('$(VsInstallRoot)\VC\Tools\MSVC')">
     <VCToolsInstallDir>$(MSBuildProjectDirectory)\obj\no-msvc\</VCToolsInstallDir>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\viddl.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250108002" />

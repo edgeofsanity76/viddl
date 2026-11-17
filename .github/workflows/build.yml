@@ -81,21 +81,19 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      # Self-contained: the .NET runtime and the Windows App SDK are included, so nothing needs installing.
-      - name: Publish
-        run: >
-          dotnet publish src/viddl.App/viddl.App.csproj -c Release
-          -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }} --self-contained true
-          -p:Version=${{ env.VERSION }} -o publish/${{ matrix.rid }}
-
-      - name: Zip
+      # Self-contained app (the .NET runtime and the Windows App SDK are included) as a zip and a per-user MSI.
+      # Signed when the SIGNING_CERT_BASE64 / SIGNING_CERT_PASSWORD secrets are set (see build/sign.ps1).
+      - name: Package
         shell: pwsh
-        run: Compress-Archive -Path "publish/${{ matrix.rid }}/*" -DestinationPath "viddl-${{ env.VERSION }}-${{ matrix.rid }}.zip"
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: ./build/package.ps1 -Platform ${{ matrix.platform }} -Version $env:VERSION -OutputDir dist
 
       - uses: actions/upload-artifact@v4
         with:
           name: viddl-${{ matrix.rid }}
-          path: viddl-${{ env.VERSION }}-${{ matrix.rid }}.zip
+          path: dist/*
           if-no-files-found: error
 
   release:
@@ -121,7 +119,7 @@ jobs:
             echo "Release $tag already exists - nothing to do."
             exit 0
           fi
-          gh release create "$tag" viddl-*.zip \
+          gh release create "$tag" viddl-*.msi viddl-*.zip \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "viddl ${VERSION}" \

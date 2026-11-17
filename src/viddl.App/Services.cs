@@ -12,8 +12,8 @@ public sealed class Services
 {
     public Services()
     {
+        // Everything lives in %LocalAppData%\viddl; a new installation starts with default settings.
         Paths = AppPaths.ForCurrentUser();
-        Paths.MigrateLegacyData();
         Store = new SettingsStore(Paths.SettingsFile);
         Settings = Store.Load();
 
