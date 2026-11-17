@@ -39,7 +39,7 @@ jobs:
 
       - uses: https://github.com/actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       # A v* tag builds that version; otherwise major.minor from Directory.Build.props plus the run number.
       - name: Work out version

@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       # Major.minor come from Directory.Build.props; the patch number is the workflow run number.
       - name: Work out version
@@ -79,7 +79,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 10.0.x
 
       # Self-contained app (the .NET runtime and the Windows App SDK are included) as a zip and a per-user MSI.
       # Signed when signing secrets are set (see build/sign.ps1).
