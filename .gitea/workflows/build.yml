@@ -1,0 +1,97 @@
+# Gitea Actions version of .github/workflows/build.yml, for the copy of this repository on a Gitea server.
+#
+# Requirements
+# - Actions enabled on the Gitea server and repository.
+# - A Windows act_runner registered with the label "windows" (WinUI apps can only be built on Windows) that has
+#   Git installed. The .NET SDK is installed by the workflow itself.
+#
+# Releases
+# - When a v* tag arrives (for example mirrored from GitHub, where the GitHub workflow creates one for every build
+#   of main), this workflow builds that exact version and attaches the zips to a Gitea release for the same tag.
+# - Pushes to main only build and test, so Gitea never creates tags that clash with mirrored ones. If Gitea is your
+#   primary server instead, set the repository variable CREATE_TAGS to "true" and every build of main gets its own
+#   tag and release, as on GitHub.
+# - The release step uses the workflow's automatic token. If your server doesn't let that token create releases,
+#   add a personal access token with repository write access as the secret RELEASE_TOKEN.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: Build, test, publish and release
+    runs-on: windows
+    steps:
+      # Full action URLs work whatever the server's DEFAULT_ACTIONS_URL is set to.
+      - uses: https://github.com/actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags and history for the version and release notes
+
+      - uses: https://github.com/actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      # A v* tag builds that version; otherwise major.minor from Directory.Build.props plus the run number.
+      - name: Work out version
+        id: version
+        shell: powershell
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') {
+            $version = $env:GITHUB_REF_NAME.Substring(1)
+          } else {
+            [xml]$props = Get-Content Directory.Build.props
+            $base = [version]($props.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+            $version = "$($base.Major).$($base.Minor).$env:GITHUB_RUN_NUMBER"
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Building version $version"
+
+      - name: Build
+        run: dotnet build viddl.sln -c Release -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test with coverage
+        shell: powershell
+        run: ./tests/coverage.ps1 -Configuration Release
+
+      # Self-contained: the .NET runtime and the Windows App SDK are included, so nothing needs installing.
+      - name: Publish
+        shell: powershell
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          foreach ($target in @(@('x64', 'win-x64'), @('x86', 'win-x86'), @('ARM64', 'win-arm64'))) {
+            $platform, $rid = $target
+            dotnet publish src/viddl.App/viddl.App.csproj -c Release -p:Platform=$platform -r $rid `
+              --self-contained true -p:Version=$version -o "publish/$rid"
+            if ($LASTEXITCODE -ne 0) { throw "Publishing $rid failed" }
+            Compress-Archive -Path "publish/$rid/*" -DestinationPath "viddl-$version-$rid.zip" -Force
+          }
+
+      # Gitea supports version 3 of the artifact actions.
+      - name: Keep the zips
+        uses: https://github.com/actions/upload-artifact@v3
+        with:
+          name: viddl-${{ steps.version.outputs.version }}
+          path: viddl-*.zip
+
+      - name: Create release
+        if: >-
+          github.event_name == 'push' &&
+          (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && vars.CREATE_TAGS == 'true'))
+        shell: powershell
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          ./build/gitea-release.ps1 -ServerUrl $env:GITHUB_SERVER_URL -Repository $env:GITHUB_REPOSITORY `
+            -Token $env:RELEASE_TOKEN -Tag "v$version" -Commit $env:GITHUB_SHA `
+            -Files (Get-ChildItem "viddl-$version-*.zip" | ForEach-Object FullName)
