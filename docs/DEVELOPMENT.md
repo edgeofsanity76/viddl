@@ -22,8 +22,8 @@ The libraries have no UI dependencies. Network access, external programs, tool l
 download engines through `DownloadEnvironment`, so tests run against an in-memory HTTP server and scripted
 stand-ins for ffmpeg and yt-dlp, with no network access or real waiting.
 
-To build it yourself you need the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0); open
-`viddl.sln` in Visual Studio 2022 or later (set **viddl.App** as the startup project), or run
+To build it yourself you need the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0); open
+`viddl.sln` in Visual Studio 2026 or later (set **viddl.App** as the startup project), or run
 `dotnet run --project src/viddl.App`. `build/package.ps1 -Platform x64 -Version 2.0.0` produces the zip and installer.
 
 ## Code signing
