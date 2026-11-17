@@ -115,8 +115,6 @@ public sealed partial class MainWindow
         var sel = SelectedStreams().ToList();
         DownloadSelectedButton.IsEnabled = sel.Any(s => !s.Unsupported);
         DownloadSelectedText.Text = sel.Count > 1 ? $"Download {sel.Count} selected" : "Download selected";
-        CopyUrlButton.IsEnabled = sel.Count == 1;
-        PreviewStreamButton.IsEnabled = sel.Count == 1 && !sel[0].Unsupported;
         NameBox.IsEnabled = sel.Count == 1;
         _settingName = true;
         NameBox.Text = sel.Count == 1 ? sel[0].DisplayName : "";
@@ -244,6 +242,7 @@ public sealed partial class MainWindow
         StopButton.IsEnabled = q.IsRunning || _toolBusy || _converting;
         StartQueueButton.IsEnabled = !q.IsRunning && !_toolBusy && q.WaitingCount > 0;
         ClearListButton.IsEnabled = q.Items.Any(i => i.State != QueueItemState.Running);
+        QueueEmptyHint.Visibility = q.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         DownloadsTab.Header = q.WaitingCount > 0 ? $"Downloads ({q.WaitingCount} waiting)" : "Downloads";
     }
 
@@ -285,6 +284,7 @@ public sealed partial class MainWindow
             ConvertItem.Items.Add(item);
         }
         ConvertItem.IsEnabled = files.Count > 0 && !_converting;
+        EditTagsItem.IsEnabled = files.Count == 1 && sel.Count == 1;
         PlayItem.IsEnabled = ShowItem.IsEnabled = sel.Any(i => i.OutputPath != null && File.Exists(i.OutputPath));
         RetryItem.IsEnabled = sel.Any(i => i.State is QueueItemState.Failed or QueueItemState.Cancelled);
         PreviewQueueMenuItem.IsEnabled = sel.Count > 0;
@@ -292,10 +292,8 @@ public sealed partial class MainWindow
         RemoveQueueItem.IsEnabled = sel.Any(i => i.State != QueueItemState.Running);
     }
 
-    private void QueueList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        if (SelectedQueueItems().FirstOrDefault() is { OutputPath: { } p } && File.Exists(p)) OpenFile(p);
-    }
+    /// <summary>Double-clicking a download previews it: from its source while downloading, from disk once saved.</summary>
+    private void QueueList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) => PreviewQueueItem_Click(sender, e);
 
     private void QueueList_KeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -328,6 +326,30 @@ public sealed partial class MainWindow
     private void RemoveQueueItem_Click(object sender, RoutedEventArgs e) => Services.Queue.Remove(SelectedQueueItems().ToList());
 
     private void ClearFinished_Click(object sender, RoutedEventArgs e) => Services.Queue.ClearFinished();
+
+    // =====================================================================================
+    // Tags
+    // =====================================================================================
+    private async void EditTags_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedQueueItems().FirstOrDefault() is not { OutputPath: { } path } || !File.Exists(path)) return;
+        var editor = new Viddl.Downloads.Engines.TagEditor(Services.Environment);
+        try
+        {
+            var current = await editor.ReadAsync(path);
+            var dialog = new TagsDialog(Root.XamlRoot, Path.GetFileName(path), current);
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            SetStatus(null, "Saving tags...");
+            await editor.WriteAsync(path, dialog.Tags);
+            SetStatus(0, $"Tags saved: {Path.GetFileName(path)}");
+            Log($"Tags saved: {path}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(0, "Couldn't save tags: " + ex.Message.Split((char)10)[0]);
+            Log("ERROR: " + ex.Message);
+        }
+    }
 
     // =====================================================================================
     // Converting saved files

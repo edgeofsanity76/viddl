@@ -74,6 +74,9 @@ public sealed class AppSettings
 
     /// <summary>Keep the downloaded file after converting it.</summary>
     public bool KeepOriginalAfterConvert { get; set; } = true;
+
+    /// <summary>Write the video's title and source page into each download's tags.</summary>
+    public bool TagDownloads { get; set; } = true;
     public int StreamsPanelWidth { get; set; } = 420;
     public int DownloadsPanelHeight { get; set; } = 260;
     public List<SiteEntry> Favorites { get; set; } = new();
