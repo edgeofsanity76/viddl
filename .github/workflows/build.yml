@@ -82,10 +82,18 @@ jobs:
           dotnet-version: 8.0.x
 
       # Self-contained app (the .NET runtime and the Windows App SDK are included) as a zip and a per-user MSI.
-      # Signed when the SIGNING_CERT_BASE64 / SIGNING_CERT_PASSWORD secrets are set (see build/sign.ps1).
+      # Signed when signing secrets are set (see build/sign.ps1).
       - name: Package
         shell: pwsh
         env:
+          # Azure Trusted Signing (recommended) ...
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TRUSTED_SIGNING_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+          # ... or a .pfx certificate
           SIGNING_CERT_BASE64: ${{ secrets.SIGNING_CERT_BASE64 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: ./build/package.ps1 -Platform ${{ matrix.platform }} -Version $env:VERSION -OutputDir dist

@@ -98,8 +98,8 @@ Every release has an installer and a portable zip for each kind of PC:
 Both include everything viddl needs, so nothing else has to be installed. viddl runs on Windows 10 version 1809 or
 later and Windows 11, and uses the Microsoft Edge WebView2 Runtime that comes with them.
 
-If Windows shows **"Windows protected your PC"** when you start an unsigned build, click **More info → Run anyway**.
-See [Code signing](#code-signing) for how signed builds avoid this.
+If Windows shows **"Windows protected your PC"** when you start a build that isn't signed, click
+**More info → Run anyway**. Signed releases show viddl as the verified publisher.
 
 **First run:** viddl offers to download the two helper programs it needs: ffmpeg from
 [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) and yt-dlp from
@@ -161,110 +161,3 @@ You can add your own domains, one per line, to `adblock-custom.txt` or `malware-
 Everything is kept locally on this PC (nothing roams with your Windows account), and a new installation starts with
 default settings. Installing, upgrading or uninstalling never touches `%LocalAppData%\viddl`; delete that folder to
 reset viddl completely.
-
-## Project structure
-
-```
-viddl.sln
-src/
-  viddl.Core/         Models, HLS playlist parsing, block lists and browser protection rules,
-                      settings, favorites and history, address-bar suggestions, stream detection
-  viddl.Downloads/    Download engines (HLS, DASH, files, yt-dlp), ffmpeg runner, page scanner,
-                      tool installer and the download queue
-  viddl.App/          WinUI 3 desktop app (unpackaged) built on the two libraries
-installer/            Per-user MSI installer (WiX)
-build/                package.ps1 (zip + MSI per platform), sign.ps1, gitea-release.ps1, make-icon.ps1
-tests/
-  viddl.Core.Tests/       Unit tests for viddl.Core
-  viddl.Downloads.Tests/  Unit tests for viddl.Downloads
-  coverage.ps1            Runs both test projects and prints a coverage summary
-```
-
-The libraries have no UI dependencies. Network access, external programs, tool locations and delays reach the
-download engines through `DownloadEnvironment`, so tests run against an in-memory HTTP server and scripted
-stand-ins for ffmpeg and yt-dlp, with no network access or real waiting.
-
-To build it yourself you need the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0); open
-`viddl.sln` in Visual Studio 2022 or later (set **viddl.App** as the startup project), or run
-`dotnet run --project src/viddl.App`. `build/package.ps1 -Platform x64 -Version 2.0.0` produces the zip and installer.
-
-## Code signing
-
-Windows shows "Windows protected your PC" (Microsoft Defender SmartScreen) for apps and installers that aren't
-code-signed, and unsigned apps are more likely to be flagged by antivirus scanners. The fix is to sign releases with
-a code-signing certificate from a trusted certificate authority:
-
-1. Get a certificate. [Azure Trusted Signing](https://learn.microsoft.com/azure/trusted-signing/) is the cheapest
-   option for individuals; certificates from authorities such as DigiCert or Sectigo also work. Signed files are
-   trusted immediately by antivirus, and SmartScreen stops warning once the certificate has built up reputation
-   (EV certificates skip that wait).
-2. Export it as a `.pfx` file and add two repository secrets (on GitHub and, if used, on Gitea):
-   - `SIGNING_CERT_BASE64` – the file, base64-encoded:
-     `[Convert]::ToBase64String([IO.File]::ReadAllBytes('cert.pfx'))`
-   - `SIGNING_CERT_PASSWORD` – its password
-
-The workflows then sign `viddl.exe`, viddl's DLLs and each installer automatically (with a timestamp, so signatures
-stay valid after the certificate expires). Without the secrets, builds are simply left unsigned. If a scanner still
-flags a release, it can be submitted to Microsoft as a false positive at
-[microsoft.com/wdsi/filesubmission](https://www.microsoft.com/wdsi/filesubmission).
-
-## Builds and releases
-
-[`.github/workflows/build.yml`](.github/workflows/build.yml) runs on every push and pull request to `main`
-(and can be started by hand from the Actions tab):
-
-1. **Build and test** – builds the solution in Release, runs the unit tests and adds a coverage table to the run
-   summary. Test results are kept as a `test-results` artifact.
-2. **Package** – for `win-x64`, `win-x86` (32-bit Windows) and `win-arm64`, builds a self-contained app (the .NET
-   runtime and the Windows App SDK are included, so nothing needs installing) as both
-   `viddl-<version>-<platform>.msi` and `viddl-<version>-<platform>.zip`, signed when a certificate is configured
-   (see [Code signing](#code-signing)).
-3. **Release** – on pushes to `main` only, tags the commit `v<version>` and creates a GitHub release with the
-   installers and zips attached and notes generated from the changes since the previous release.
-
-Versions are `major.minor.run`: the major and minor numbers come from `Directory.Build.props` and the last part is
-the workflow run number, so every build of `main` gets a new tag and release (for example `v2.0.57`). To start a
-new series, change `<Version>` in `Directory.Build.props` (for example to `2.1.0`). Local builds use the version
-from that file as-is.
-
-### Gitea
-
-[`.gitea/workflows/build.yml`](.gitea/workflows/build.yml) does the same build, test and publish for a copy of the
-repository on a Gitea server (Gitea uses the `.gitea` folder and GitHub ignores it, so each server runs its own
-workflow).
-
-**Setup**
-
-1. Enable Actions on the Gitea server and in the repository settings.
-2. Register a **Windows** [act_runner](https://docs.gitea.com/usage/actions/act-runner) with the label `windows`
-   (WinUI apps can only be built on Windows) on a machine with Git installed. The workflow installs the .NET SDK
-   itself.
-3. Optional: if the workflow's automatic token isn't allowed to create releases on your server, add a personal access
-   token with repository write access as the repository secret `RELEASE_TOKEN`.
-
-**How releases work there**
-
-- When a `v*` tag arrives (for example mirrored from GitHub, where every build of `main` creates one), the workflow
-  builds exactly that version and attaches the three zips to a Gitea release for the same tag, with notes listing
-  the commits since the previous tag.
-- Pushes to `main` only build and test, so the Gitea copy never creates tags that clash with mirrored ones.
-- If Gitea is your primary server instead, set the repository variable `CREATE_TAGS` to `true`: every build of `main`
-  then gets its own `v<major>.<minor>.<run>` tag and release, as on GitHub.
-
-Mirroring notes: a push mirror (GitHub or your machine pushing to Gitea) behaves like normal pushes. With a pull mirror
-(Gitea fetching from GitHub), whether a sync starts workflows and whether releases can be added to the mirror depend
-on your Gitea version and settings; you can always start the workflow by hand from the repository's Actions tab.
-
-## Tests
-
-```powershell
-dotnet test viddl.sln
-```
-
-To see coverage for the libraries:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File tests/coverage.ps1
-```
-
-The WinUI app project contains only view code and is not covered by unit tests.
